@@ -51,8 +51,8 @@ The mod runs on **Fabric** and **NeoForge**. Fabric API and other libraries are 
 
 1. Install [Fabric Loader](https://fabricmc.net/use/) (0.17.3 or newer) or [NeoForge](https://neoforged.net/) for Minecraft **1.21.11**.
 2. Place one JAR for your loader into the `mods` folder:
-   - `AtlasMapExtended-Fabric-1.21.11-v1.1.0.jar` for Fabric;
-   - `AtlasMapExtended-NeoForge-1.21.11-v1.1.0.jar` for NeoForge.
+   - `AtlasMapExtended-Fabric-1.21.11-v1.1.1.jar` for Fabric;
+   - `AtlasMapExtended-NeoForge-1.21.11-v1.1.1.jar` for NeoForge.
 3. Launch the game.
 
 The mod is client-side only; no need to install it on a server.
@@ -87,8 +87,8 @@ JDK 21 or newer is required.
 
 The command builds both files in `build/libs/`:
 
-- `AtlasMapExtended-Fabric-1.21.11-v1.1.0.jar`
-- `AtlasMapExtended-NeoForge-1.21.11-v1.1.0.jar`
+- `AtlasMapExtended-Fabric-1.21.11-v1.1.1.jar`
+- `AtlasMapExtended-NeoForge-1.21.11-v1.1.1.jar`
 
 Game tests with screenshots are available on the `26.1` and `26.3` branches (Fabric API for 1.21 does not ship the client-gametest module).
 
