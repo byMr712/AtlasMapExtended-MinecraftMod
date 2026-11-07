@@ -13,6 +13,7 @@
     "MinecraftMixin",
     "OptionsMixin",
     "ScreenAccessor",
+    "ScreenMixin",
     "TitleScreenMixin"
   ],
   "injectors": {
