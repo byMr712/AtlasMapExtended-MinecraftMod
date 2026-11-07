@@ -108,7 +108,9 @@ public final class FramedMapRenderer {
             x = 1.0f;
         }
         float len = (float) Math.sqrt(x * x + y * y);
-        matrix.rotate(angle, x / len, y / len, 0.0f);
+        // Always roll to the right when looking along the arrow, no matter
+        // which way the icon points.
+        matrix.rotate(-angle, x / len, y / len, 0.0f);
     }
 
     /** Smooth full turn with a pause at the end of each revolution. */
