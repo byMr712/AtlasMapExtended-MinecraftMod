@@ -14,6 +14,10 @@ public class ModConfig {
     /** Bumped when the size list changes, so old indices can be remapped once. */
     public int minimapSizesVersion = 0;
     public int minimapZoomIndex = 0;
+    /** 0 = off, 1 = 1, 2 = 5, 3 = 10, 4 = unlimited. */
+    public int deathMarkers = 2;
+    /** New death markers created since the limit was last applied. */
+    public int deathMarkersCreated = 0;
     /** 0 = top right, 1 = top left, 2 = bottom right, 3 = bottom left. */
     public int minimapCorner = 0;
     public boolean minimapCoords = true;
@@ -80,6 +84,8 @@ public class ModConfig {
     private void clamp() {
         minimapSizeIndex = Math.floorMod(minimapSizeIndex, MINIMAP_SIZES.length);
         minimapZoomIndex = Math.max(0, Math.min(MINIMAP_ZOOMS.length - 1, minimapZoomIndex));
+        deathMarkers = Math.max(0, Math.min(4, deathMarkers));
+        deathMarkersCreated = Math.max(0, deathMarkersCreated);
         minimapCorner = Math.floorMod(minimapCorner, 4);
     }
 
