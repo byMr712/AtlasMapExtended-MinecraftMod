@@ -44,6 +44,7 @@ public final class FramedMapCache {
         FramedMapMesh mesh;
         FramedMapOverlay overlay;
         long builtHash;
+        long lastBuildTick;
 
         Entry(FramedMapKey key) {
             this.key = key;
@@ -87,10 +88,10 @@ public final class FramedMapCache {
             startSampling(entry, data, hash);
             ENTRIES.put(id, entry);
             System.out.println("[AtlasMap3D] geometry changed map " + id);
-        } else if (entry.mesh != null && entry.builtHash != hash) {
-            // the map was explored further or rescaled: rebuild once
-            entry.mesh = null;
-            entry.builtHash = 0;
+        } else if (!entry.sampling && !entry.building && entry.mesh != null
+                && entry.builtHash != hash
+                && level.getGameTime() - entry.lastBuildTick > 100) {
+            // the map was explored further: rebuild in the background, keep the old mesh visible
             startSampling(entry, data, hash);
             System.out.println("[AtlasMap3D] refresh map " + id);
         }
@@ -167,6 +168,8 @@ public final class FramedMapCache {
                 entry.mesh = mesh;
                 entry.builtHash = hash;
                 entry.building = false;
+                entry.lastBuildTick = Minecraft.getInstance().level != null
+                        ? Minecraft.getInstance().level.getGameTime() : 0L;
                 System.out.println("[AtlasMap3D] built map " + entry.id + " quads=" + mesh.quadCount()
                         + " surfaceY=" + min + ".." + max + " startY=" + startY);
             });

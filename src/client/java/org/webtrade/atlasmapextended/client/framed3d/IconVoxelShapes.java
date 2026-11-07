@@ -44,7 +44,11 @@ public final class IconVoxelShapes {
                 for (int vertex = 0; vertex < 4; vertex++) {
                     int o = p + vertex * 3;
                     consumer.addVertex(matrix, positions[o], positions[o + 1], positions[o + 2])
-                            .setColor(color);
+                            .setColor(color)
+                            .setUv(0.0f, 0.0f)
+                            .setLight(15728880)
+                            .setOverlay(0)
+                            .setNormal(0.0f, 0.0f, 1.0f);
                 }
             }
         }
