@@ -44,5 +44,9 @@ public final class FramedMapRenderer {
         }
         collector.submitCustomGeometry(pose, RenderTypes.debugQuads(),
                 (p, consumer) -> mesh.emit(p.pose(), consumer));
+        if (mesh.lineCount() > 0) {
+            collector.submitCustomGeometry(pose, RenderTypes.lines(),
+                    (p, consumer) -> mesh.emitLines(p.pose(), consumer));
+        }
     }
 }

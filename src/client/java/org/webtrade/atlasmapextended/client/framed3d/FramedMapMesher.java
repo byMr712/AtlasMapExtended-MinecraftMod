@@ -1,19 +1,23 @@
 package org.webtrade.atlasmapextended.client.framed3d;
 
+import org.webtrade.atlasmapextended.client.data.Marker;
+import org.webtrade.atlasmapextended.client.data.Region;
+import org.webtrade.atlasmapextended.client.data.Stroke;
 import org.webtrade.atlasmapextended.client.map.ChunkScanner;
 
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Builds a surface-only relief. Columns at or below the base height stay flat;
- * everything above is extruded towards the viewer. Sides exist only for the
- * visible height difference between neighbouring surface columns.
+ * Builds a surface-only relief with a frozen overlay snapshot. Columns at or
+ * below the base height stay flat; markers become small 3D pins, regions and
+ * drawings become lines draped over the surface.
  */
 public final class FramedMapMesher {
     private static final int MAX_QUADS = 120_000;
     private static final float MAX_DEPTH = 96.0f;
     private static final float BASE_OFFSET = 0.05f;
+    private static final int INK = 0xFF3A2616;
 
     private FramedMapMesher() {
     }
@@ -32,7 +36,19 @@ public final class FramedMapMesher {
         }
     }
 
-    public static FramedMapMesh build(FramedMapVolume volume, FramedMapKey key, int startY) {
+    private static final class Line {
+        final float[] p = new float[6];
+        final int color;
+
+        Line(float x0, float y0, float z0, float x1, float y1, float z1, int color) {
+            p[0] = x0; p[1] = y0; p[2] = z0;
+            p[3] = x1; p[4] = y1; p[5] = z1;
+            this.color = color;
+        }
+    }
+
+    public static FramedMapMesh build(FramedMapVolume volume, FramedMapKey key, int startY,
+                                      FramedMapOverlay overlay) {
         float[] depth = new float[FramedMapVolume.COLUMNS];
         int[] colors = new int[FramedMapVolume.COLUMNS];
         int scaleFactor = key.scaleFactor();
@@ -59,6 +75,7 @@ public final class FramedMapMesher {
         }
 
         List<Quad> quads = new ArrayList<>();
+        List<Line> lines = new ArrayList<>();
 
         // top faces, merged horizontally while colour and depth match
         for (int pz = 0; pz < FramedMapVolume.SIZE; pz++) {
@@ -86,7 +103,7 @@ public final class FramedMapMesher {
                         px + run, pz, d,
                         color));
                 if (quads.size() >= MAX_QUADS) {
-                    return finish(quads);
+                    return finish(quads, lines);
                 }
                 px += run;
             }
@@ -140,15 +157,104 @@ public final class FramedMapMesher {
                             edgeColor));
                 }
                 if (quads.size() >= MAX_QUADS) {
-                    return finish(quads);
+                    return finish(quads, lines);
                 }
             }
         }
 
-        return finish(quads);
+        if (overlay != null) {
+            addOverlay(volume, key, startY, depth, quads, lines, overlay, scaleFactor);
+        }
+        return finish(quads, lines);
     }
 
-    private static FramedMapMesh finish(List<Quad> quads) {
+    private static void addOverlay(FramedMapVolume volume, FramedMapKey key, int startY,
+                                   float[] depth, List<Quad> quads, List<Line> lines,
+                                   FramedMapOverlay overlay, int scaleFactor) {
+        for (Marker marker : overlay.markers) {
+            int px = pixelX(overlay, scaleFactor, marker.x);
+            int pz = pixelZ(overlay, scaleFactor, marker.z);
+            if (px < 2 || pz < 2 || px >= FramedMapVolume.SIZE - 2 || pz >= FramedMapVolume.SIZE - 2) {
+                continue;
+            }
+            int index = pz * FramedMapVolume.SIZE + px;
+            if (!volume.valid[index]) {
+                continue;
+            }
+            float base = Math.max(0.5f, depth[index]);
+            float top = base + 5.0f;
+            int color = marker.color == 0 ? INK : marker.color;
+            if ((color >>> 24) == 0) {
+                color |= 0xFF000000;
+            }
+            quads.add(new Quad(
+                    px - 2, pz, base,
+                    px - 2, pz, top,
+                    px + 2, pz, top,
+                    px + 2, pz, base,
+                    color));
+            quads.add(new Quad(
+                    px, pz - 2, base,
+                    px, pz - 2, top,
+                    px, pz + 2, top,
+                    px, pz + 2, base,
+                    color));
+        }
+
+        for (Region region : overlay.regions) {
+            double[] pts = region.pts;
+            for (int i = 0; i + 3 < pts.length; i += 2) {
+                addLine(volume, overlay, scaleFactor, startY, lines,
+                        pts[i], pts[i + 1], pts[i + 2], pts[i + 3], region.color);
+            }
+            if (pts.length >= 4) {
+                addLine(volume, overlay, scaleFactor, startY, lines,
+                        pts[pts.length - 2], pts[pts.length - 1], pts[0], pts[1], region.color);
+            }
+        }
+
+        for (Stroke stroke : overlay.strokes) {
+            for (int i = 0; i + 3 < stroke.pts.length; i += 2) {
+                addLine(volume, overlay, scaleFactor, startY, lines,
+                        stroke.pts[i], stroke.pts[i + 1], stroke.pts[i + 2], stroke.pts[i + 3], stroke.color);
+            }
+        }
+    }
+
+    private static void addLine(FramedMapVolume volume, FramedMapOverlay overlay, int scaleFactor,
+                                int startY, List<Line> lines,
+                                double x0, double z0, double x1, double z1, int color) {
+        int px0 = pixelX(overlay, scaleFactor, x0);
+        int pz0 = pixelZ(overlay, scaleFactor, z0);
+        int px1 = pixelX(overlay, scaleFactor, x1);
+        int pz1 = pixelZ(overlay, scaleFactor, z1);
+        if (!inside(px0, pz0) || !inside(px1, pz1)) {
+            return;
+        }
+        int i0 = pz0 * FramedMapVolume.SIZE + px0;
+        int i1 = pz1 * FramedMapVolume.SIZE + px1;
+        if (!volume.valid[i0] || !volume.valid[i1]) {
+            return;
+        }
+        float d0 = Math.max(0.3f, (volume.surfaceY[i0] - startY) * (1.0f / scaleFactor)) + 1.5f;
+        float d1 = Math.max(0.3f, (volume.surfaceY[i1] - startY) * (1.0f / scaleFactor)) + 1.5f;
+        lines.add(new Line(px0, pz0, Math.min(MAX_DEPTH, d0),
+                px1, pz1, Math.min(MAX_DEPTH, d1), color));
+    }
+
+    private static boolean inside(int px, int pz) {
+        return px >= 0 && pz >= 0 && px < FramedMapVolume.SIZE && pz < FramedMapVolume.SIZE;
+    }
+
+    private static int pixelX(FramedMapOverlay overlay, int scaleFactor, double worldX) {
+        return (int) Math.round(64.0 + (worldX - overlay.centerX) / scaleFactor);
+    }
+
+    private static int pixelZ(FramedMapOverlay overlay, int scaleFactor, double worldZ) {
+        return (int) Math.round(64.0 + (worldZ - overlay.centerZ) / scaleFactor);
+    }
+
+    private static FramedMapMesh finish(List<Quad> quads, List<Line> lines) {
         float[] positions = new float[quads.size() * 12];
         int[] colors = new int[quads.size()];
         for (int i = 0; i < quads.size(); i++) {
@@ -156,7 +262,14 @@ public final class FramedMapMesher {
             System.arraycopy(quad.p, 0, positions, i * 12, 12);
             colors[i] = quad.color;
         }
-        return new FramedMapMesh(positions, colors, quads.size());
+        float[] linePositions = new float[lines.size() * 6];
+        int[] lineColors = new int[lines.size()];
+        for (int i = 0; i < lines.size(); i++) {
+            Line line = lines.get(i);
+            System.arraycopy(line.p, 0, linePositions, i * 6, 6);
+            lineColors[i] = line.color;
+        }
+        return new FramedMapMesh(positions, colors, quads.size(), linePositions, lineColors, lines.size());
     }
 
     private static int neighbourHeight(FramedMapVolume volume, int px, int pz, int fallback) {

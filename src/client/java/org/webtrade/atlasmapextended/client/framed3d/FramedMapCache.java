@@ -42,6 +42,7 @@ public final class FramedMapCache {
         int buildGeneration = -1;
         int generation;
         FramedMapMesh mesh;
+        FramedMapOverlay overlay;
         long builtHash;
 
         Entry(FramedMapKey key) {
@@ -66,6 +67,7 @@ public final class FramedMapCache {
         Entry entry = ENTRIES.get(id);
         if (entry == null) {
             entry = new Entry(key);
+            entry.overlay = FramedOverlayStorage.getOrCapture(key);
             FramedMapVolume stored = FramedMapStorage.load(key);
             if (stored != null) {
                 entry.volume = stored;
@@ -81,6 +83,7 @@ public final class FramedMapCache {
             ENTRIES.put(id, entry);
         } else if (!entry.key.sameGeometry(key)) {
             entry = new Entry(key);
+            entry.overlay = FramedOverlayStorage.getOrCapture(key);
             startSampling(entry, data, hash);
             ENTRIES.put(id, entry);
             System.out.println("[AtlasMap3D] geometry changed map " + id);
@@ -143,13 +146,19 @@ public final class FramedMapCache {
         entry.building = true;
         entry.buildGeneration = entry.generation;
         int generation = entry.generation;
+        FramedMapOverlay overlay = entry.overlay;
+        if (overlay == null) {
+            overlay = FramedOverlayStorage.getOrCapture(entry.key);
+            entry.overlay = overlay;
+        }
         FramedMapVolume snapshot = entry.volume.copy();
         FramedMapKey key = entry.key;
         long hash = entry.exploredHash;
         int min = minSurface;
         int max = maxSurface;
+        FramedMapOverlay snapshotOverlay = overlay;
         MESH_POOL.execute(() -> {
-            FramedMapMesh mesh = FramedMapMesher.build(snapshot, key, startY);
+            FramedMapMesh mesh = FramedMapMesher.build(snapshot, key, startY, snapshotOverlay);
             Minecraft.getInstance().execute(() -> {
                 Entry current = ENTRIES.get(entry.id);
                 if (current != entry || entry.generation != generation) {
