@@ -7,6 +7,7 @@ package org.webtrade.atlasmapextended.client.data;
 public class Stroke {
     public static final String PEN = "pen";
     public static final String LINE = "line";
+    public static final String ARROW = "arrow";
     public static final String RECT = "rect";
     public static final String CIRCLE = "circle";
 
