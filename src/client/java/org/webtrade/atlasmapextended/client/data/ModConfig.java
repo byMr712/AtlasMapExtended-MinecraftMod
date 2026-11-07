@@ -29,13 +29,15 @@ public class ModConfig {
     public boolean markerLabels = true;
 
     private static ModConfig instance;
+    private static int firstRunSizeDelay = -1;
 
     public static ModConfig get() {
         if (instance == null) {
             ModConfig fallback = new ModConfig();
             fallback.minimapSizesVersion = 1;
-            fallback.minimapSizeIndex = defaultSizeIndexForGuiScale();
+            boolean existed = java.nio.file.Files.isRegularFile(file());
             instance = Storage.readJson(file(), ModConfig.class, fallback);
+            firstRunSizeDelay = existed ? -1 : 60;
             if (instance.minimapSizesVersion == 0) {
                 // Old config: the first four slots used to be 80/110/140/170.
                 instance.minimapSizeIndex = Math.min(MINIMAP_SIZES.length - 1, instance.minimapSizeIndex + 3);
@@ -47,20 +49,29 @@ public class ModConfig {
         return instance;
     }
 
-    /** First-run default: 230 px at GUI scale 1, 110 px at 2, 80 px at 3, 60 px otherwise. */
-    private static int defaultSizeIndexForGuiScale() {
+    /** Resolves the first-run minimap size after the window had time to settle. */
+    public static void tickFirstRunGuiScale() {
+        ModConfig cfg = get();
+        if (firstRunSizeDelay < 0) {
+            return;
+        }
+        if (firstRunSizeDelay > 0) {
+            firstRunSizeDelay--;
+            return;
+        }
+        firstRunSizeDelay = -1;
         int scale = -1;
         try {
             Minecraft mc = Minecraft.getInstance();
             if (mc != null && mc.options != null) {
-                // calculateScale also resolves "auto" (0) to the real GUI scale.
                 scale = mc.getWindow().calculateScale(
                         mc.options.guiScale().get(),
                         mc.options.forceUnicodeFont().get());
             }
         } catch (Throwable ignored) {
         }
-        return scale == 1 ? 8 : scale == 2 ? 4 : scale == 3 ? 3 : 2;
+        cfg.minimapSizeIndex = scale == 1 ? 8 : scale == 2 ? 4 : scale == 3 ? 3 : 2;
+        cfg.save();
     }
     private static Path file() {
         return Minecraft.getInstance().gameDirectory.toPath().resolve("config").resolve("atlasmapextended.json");
