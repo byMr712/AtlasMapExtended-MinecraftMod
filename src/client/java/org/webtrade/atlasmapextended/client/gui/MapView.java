@@ -159,7 +159,8 @@ public class MapView {
                 if (p.length >= 4) {
                     seg(g, p[0], p[1], p[2], p[3], wpx, c);
                 }
-            }            case Stroke.ARROW -> {
+            }
+            case Stroke.ARROW -> {
                 if (p.length >= 4) {
                     seg(g, p[0], p[1], p[2], p[3], wpx, c);
                     float ax = sx(p[0]);
