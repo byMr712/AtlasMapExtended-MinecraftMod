@@ -130,9 +130,6 @@ public final class AtlasMapExtendedCommon {
             case 3 -> 10;
             default -> Integer.MAX_VALUE;
         };
-        if (cfg.deathMarkersCreated >= max) {
-            return;
-        }
         MapSession session = MapManager.live();
         if (session == null) {
             return;
@@ -140,6 +137,7 @@ public final class AtlasMapExtendedCommon {
         Marker m = new Marker();
         m.icon = "skull";
         m.death = true;
+        m.deathEpoch = cfg.deathEpoch;
         m.color = 0xFFC62828;
         m.name = T.s("marker.death");
         m.description = T.s("marker.death_desc", p.getBlockX(), p.getBlockY(), p.getBlockZ());
@@ -149,10 +147,23 @@ public final class AtlasMapExtendedCommon {
         m.z = p.getBlockZ();
         m.created = System.currentTimeMillis();
         session.markers.add(m);
+        if (limit < 4) {
+            Marker oldest = null;
+            int count = 0;
+            for (Marker x : session.markers) {
+                if (x.death && x.deathEpoch == cfg.deathEpoch) {
+                    count++;
+                    if (oldest == null) {
+                        oldest = x;
+                    }
+                }
+            }
+            if (count > max && oldest != null && oldest != m) {
+                session.markers.remove(oldest);
+            }
+        }
         session.saveMarkers();
         captureDeathScreenshot(mc, session, m);
-        cfg.deathMarkersCreated++;
-        cfg.save();
     }
     /** Asks vanilla for a screenshot of the death spot and attaches it to the death marker. */
     private static void captureDeathScreenshot(Minecraft mc, MapSession session, Marker marker) {
