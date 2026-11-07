@@ -5,10 +5,12 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import org.webtrade.atlasmapextended.client.AtlasMapExtendedCommon;
 
-/** Draws the minimap as the last HUD layer, so it covers the scoreboard and stays under screens. */
+/** Draws the minimap last, so it covers the scoreboard and stays under screens. */
 public final class MinimapFrame {
     private static final boolean FABRIC = hasClass("net.fabricmc.loader.api.FabricLoader");
     private static boolean drawnThisFrame;
+    private static GuiGraphics pendingGraphics;
+    private static DeltaTracker pendingDelta;
 
     private MinimapFrame() {
     }
@@ -22,13 +24,20 @@ public final class MinimapFrame {
         }
     }
 
-    /** Fabric builds the HUD from a layer list; NeoForge gets a direct draw at the end of Gui.render. */
+    /** Fabric builds the HUD from a layer list; NeoForge draws at the end of the whole frame. */
     public static boolean useLayer() {
         return FABRIC;
     }
 
     public static void beginFrame() {
         drawnThisFrame = false;
+        pendingGraphics = null;
+        pendingDelta = null;
+    }
+
+    public static void remember(GuiGraphics g, DeltaTracker delta) {
+        pendingGraphics = g;
+        pendingDelta = delta;
     }
 
     public static void draw(GuiGraphics g, DeltaTracker delta) {
@@ -46,5 +55,12 @@ public final class MinimapFrame {
         g.flush();
         AtlasMapExtendedCommon.renderMinimap(g, delta);
         g.flush();
+    }
+
+    public static void drawLate() {
+        if (drawnThisFrame || pendingGraphics == null || pendingDelta == null) {
+            return;
+        }
+        draw(pendingGraphics, pendingDelta);
     }
 }

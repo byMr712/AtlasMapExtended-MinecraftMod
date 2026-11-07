@@ -36,8 +36,8 @@ public class GuiMixin {
     }
 
     @Inject(method = "render", at = @At("TAIL"))
-    private void atlasmapextended$renderMinimapFallback(GuiGraphics g, DeltaTracker delta, CallbackInfo ci) {
-        MinimapFrame.draw(g, delta);
+    private void atlasmapextended$rememberMinimapFrame(GuiGraphics g, DeltaTracker delta, CallbackInfo ci) {
+        MinimapFrame.remember(g, delta);
     }
 
 }
