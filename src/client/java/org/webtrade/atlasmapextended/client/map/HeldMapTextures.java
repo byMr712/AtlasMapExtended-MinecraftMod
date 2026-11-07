@@ -104,9 +104,11 @@ public final class HeldMapTextures {
                 if (packed == 0) {
                     argb = PAPER_LIGHT;
                 } else {
-                    int rgb = MapColor.getColorFromPackedId(packed);
-                    boolean water = rgb == MapColor.WATER.col;
-                    argb = ChunkScanner.papyrus(rgb, 0, 0, 0, water ? 1 : 0, x, y);
+                    // Use the base map colour, not vanilla's baked brightness, so
+                    // the held map matches the mod's own papyrus palette.
+                    MapColor color = MapColor.byId(packed >> 2);
+                    argb = ChunkScanner.papyrus(color.col, 0, 0, 0,
+                            color == MapColor.WATER ? 1 : 0, x, y);
                 }
                 image.setPixelABGR(x, y, abgr(argb));
             }
@@ -202,14 +204,14 @@ public final class HeldMapTextures {
             int sy = y * source.getHeight() / MARKER_SIZE;
             for (int x = 0; x < MARKER_SIZE; x++) {
                 int sx = x * source.getWidth() / MARKER_SIZE;
-                int abgr = source.getPixel(sx, sy);
-                int a = (abgr >>> 24) & 0xFF;
+                int pixel = source.getPixel(sx, sy);
+                int a = (pixel >>> 24) & 0xFF;
                 if (a == 0) {
                     continue;
                 }
-                int r = abgr & 0xFF;
-                int g = (abgr >>> 8) & 0xFF;
-                int b = (abgr >>> 16) & 0xFF;
+                int r = (pixel >> 16) & 0xFF;
+                int g = (pixel >> 8) & 0xFF;
+                int b = pixel & 0xFF;
                 if (marker.color != 0) {
                     r = r * ((tint >> 16) & 0xFF) / 255;
                     g = g * ((tint >> 8) & 0xFF) / 255;
@@ -218,7 +220,7 @@ public final class HeldMapTextures {
                 int px = ox + x;
                 int py = oy + y;
                 if (px >= 0 && py >= 0 && px < SIZE && py < SIZE) {
-                    image.setPixelABGR(px, py, (a << 24) | (b << 16) | (g << 8) | r);
+                    image.setPixel(px, py, (a << 24) | (r << 16) | (g << 8) | b);
                 }
             }
         }

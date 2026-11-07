@@ -2,6 +2,7 @@ package org.webtrade.atlasmapextended.client.framed3d;
 
 import com.mojang.blaze3d.platform.NativeImage;
 import com.mojang.blaze3d.vertex.VertexConsumer;
+import net.minecraft.client.renderer.texture.OverlayTexture;
 import org.joml.Matrix4fc;
 
 import java.io.InputStream;
@@ -45,7 +46,7 @@ public final class IconVoxelShapes {
                             .setColor(color)
                             .setUv(0.0f, 0.0f)
                             .setLight(15728880)
-                            .setOverlay(0)
+                            .setOverlay(OverlayTexture.NO_OVERLAY)
                             .setNormal(0.0f, 0.0f, 1.0f);
                 }
             }
