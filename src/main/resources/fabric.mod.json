@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "atlasmapextended",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "name": "AtlasMapExtended",
   "description": "A world map and minimap with 8 UI designs, colourable markers, screenshots, ruler, drawing tools and teleport. Maps are stored per server and per world.",
   "authors": ["erkinpaw", "Mr712"],
