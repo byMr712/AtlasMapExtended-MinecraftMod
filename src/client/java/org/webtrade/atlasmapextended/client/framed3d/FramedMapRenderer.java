@@ -75,13 +75,14 @@ public final class FramedMapRenderer {
                     }
                     boolean arrowIcon = icon.icon().startsWith("arrow");
                     Matrix4f matrix = new Matrix4f(base).translate(icon.x(), icon.y(), icon.z());
-                    if (verticalFrame) {
-                        // Flat map: everything turns around the world-vertical
-                        // axis; arrows stay lying along their line.
-                        matrix.rotateZ(angle);
-                        if (!arrowIcon) {
-                            matrix.rotateX(standUp);
-                        }
+                    if (arrowIcon) {
+                        // Arrows lie flat along their line and spin around that
+                        // longitudinal axis, like a bullet in flight.
+                        rotateAroundArrowAxis(matrix, icon.icon(), angle);
+                    } else if (verticalFrame) {
+                        // Map lies flat: stand the icon up out of the map and spin it
+                        // around that vertical axis, like a floating plumbob.
+                        matrix.rotateZ(angle).rotateX(standUp);
                     } else {
                         matrix.rotateY(angle);
                     }
@@ -93,6 +94,21 @@ public final class FramedMapRenderer {
             });
         }
         pose.popPose();
+    }
+
+    /** Spins a flat arrow around its own direction vector. */
+    private static void rotateAroundArrowAxis(Matrix4f matrix, String icon, float angle) {
+        String suffix = icon.length() > 5 ? icon.substring(5) : "";
+        if (suffix.startsWith("_")) {
+            suffix = suffix.substring(1);
+        }
+        float x = suffix.contains("e") ? 1.0f : suffix.contains("w") ? -1.0f : 0.0f;
+        float y = suffix.contains("n") ? -1.0f : suffix.contains("s") ? 1.0f : 0.0f;
+        if (x == 0.0f && y == 0.0f) {
+            x = 1.0f;
+        }
+        float len = (float) Math.sqrt(x * x + y * y);
+        matrix.rotate(angle, x / len, y / len, 0.0f);
     }
 
     /** Smooth full turn with a pause at the end of each revolution. */
