@@ -16,6 +16,7 @@
     "MultiLineEditBoxMixin",
     "OptionsMixin",
     "ScreenAccessor",
+    "ScreenMixin",
     "TitleScreenMixin",
     "KeyMappingAccessor"
   ],
