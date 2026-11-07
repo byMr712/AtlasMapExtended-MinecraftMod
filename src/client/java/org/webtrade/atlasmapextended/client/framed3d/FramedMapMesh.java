@@ -14,14 +14,10 @@ public final class FramedMapMesh {
     private final float[] linePositions;
     private final int[] lineColors;
     private final int lineCount;
-    private final float[] fillPositions;
-    private final int[] fillColors;
-    private final int fillCount;
     private final List<VoxelIcon> voxelIcons;
 
     FramedMapMesh(float[] positions, int[] colors, int count,
                   float[] linePositions, int[] lineColors, int lineCount,
-                  float[] fillPositions, int[] fillColors, int fillCount,
                   List<VoxelIcon> voxelIcons) {
         this.positions = positions;
         this.colors = colors;
@@ -29,18 +25,11 @@ public final class FramedMapMesh {
         this.linePositions = linePositions;
         this.lineColors = lineColors;
         this.lineCount = lineCount;
-        this.fillPositions = fillPositions;
-        this.fillColors = fillColors;
-        this.fillCount = fillCount;
         this.voxelIcons = voxelIcons;
     }
 
     public int lineCount() {
         return lineCount;
-    }
-
-    public int fillCount() {
-        return fillCount;
     }
 
     public List<VoxelIcon> voxelIcons() {
@@ -63,19 +52,6 @@ public final class FramedMapMesh {
         }
     }
 
-    /** Translucent region fills; RenderTypes.debugQuads() only needs position + colour. */
-    public void emitFills(Matrix4fc matrix, VertexConsumer consumer, float brightness) {
-        for (int quad = 0; quad < fillCount; quad++) {
-            int p = quad * 12;
-            int color = brighten(fillColors[quad], brightness);
-            for (int vertex = 0; vertex < 4; vertex++) {
-                int o = p + vertex * 3;
-                consumer.addVertex(matrix, fillPositions[o], fillPositions[o + 1], fillPositions[o + 2])
-                        .setColor(color);
-            }
-        }
-    }
-
     /** Two vertices per segment; RenderTypes.lines() consumes pairs. */
     public void emitLines(Matrix4fc matrix, VertexConsumer consumer, float brightness) {
         for (int line = 0; line < lineCount; line++) {
@@ -84,11 +60,11 @@ public final class FramedMapMesh {
             consumer.addVertex(matrix, linePositions[o], linePositions[o + 1], linePositions[o + 2])
                     .setColor(c)
                     .setNormal(0.0f, 1.0f, 0.0f)
-                    .setLineWidth(2.0f);
+                    .setLineWidth(3.0f);
             consumer.addVertex(matrix, linePositions[o + 3], linePositions[o + 4], linePositions[o + 5])
                     .setColor(c)
                     .setNormal(0.0f, 1.0f, 0.0f)
-                    .setLineWidth(2.0f);
+                    .setLineWidth(3.0f);
         }
     }
 

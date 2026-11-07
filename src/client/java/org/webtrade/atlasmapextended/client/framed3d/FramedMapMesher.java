@@ -21,7 +21,8 @@ public final class FramedMapMesher {
     private static final float SIDE_SHADE = 0.78f;
     private static final float EDGE_SHADE = 0.68f;
     /** How far above the surface marker icons hover, in map pixels. */
-    private static final float ICON_HOVER = 16.0f;
+    private static final float ICON_HOVER = 6.0f;
+    private static final int REGION_FILL_ALPHA = 0x55;
 
     private FramedMapMesher() {
     }
@@ -77,20 +78,21 @@ public final class FramedMapMesher {
                         hn, hw,
                         waterDepth,
                         wx, wz);
+                if (overlay != null) {
+                    double cx = wx + scaleFactor * 0.5;
+                    double cz = wz + scaleFactor * 0.5;
+                    for (Region region : overlay.regions) {
+                        if (region.filled && !region.hidden && region.contains(cx, cz)) {
+                            colors[index] = blendFill(colors[index], region.color);
+                        }
+                    }
+                }
             }
         }
 
         List<Quad> quads = new ArrayList<>();
-        List<Quad> fills = new ArrayList<>();
         List<Line> lines = new ArrayList<>();
         List<FramedMapMesh.VoxelIcon> icons = new ArrayList<>();
-        float overlayZ = 0.0f;
-        for (int i = 0; i < FramedMapVolume.COLUMNS; i++) {
-            if (depth[i] > overlayZ) {
-                overlayZ = depth[i];
-            }
-        }
-        overlayZ += 4.0f;
 
         // top faces, merged horizontally while colour and depth match
         for (int pz = 0; pz < FramedMapVolume.SIZE; pz++) {
@@ -118,7 +120,7 @@ public final class FramedMapMesher {
                         px + run, pz, d,
                         color));
                 if (quads.size() >= MAX_QUADS) {
-                    return finish(quads, fills, lines, icons);
+                    return finish(quads, lines, icons);
                 }
                 px += run;
             }
@@ -157,15 +159,15 @@ public final class FramedMapMesher {
                             px, pz, north, d, surfaceColor);
                 }
                 if (quads.size() >= MAX_QUADS) {
-                    return finish(quads, fills, lines, icons);
+                    return finish(quads, lines, icons);
                 }
             }
         }
 
         if (overlay != null) {
-            addOverlay(volume, overlayZ, fills, lines, icons, overlay, scaleFactor);
+            addOverlay(volume, startY, depth, lines, icons, overlay, scaleFactor);
         }
-        return finish(quads, fills, lines, icons);
+        return finish(quads, lines, icons);
     }
 
     private static void addWallEast(List<Quad> quads, FramedMapVolume volume, int index, int scaleFactor,
@@ -229,9 +231,8 @@ public final class FramedMapMesher {
         return shade(ChunkScanner.papyrus(rgb, 0, 0, 0, 0, wx, wz), factor);
     }
 
-    private static void addOverlay(FramedMapVolume volume, float overlayZ,
-                                   List<Quad> fills, List<Line> lines,
-                                   List<FramedMapMesh.VoxelIcon> icons,
+    private static void addOverlay(FramedMapVolume volume, int startY, float[] depth,
+                                   List<Line> lines, List<FramedMapMesh.VoxelIcon> icons,
                                    FramedMapOverlay overlay, int scaleFactor) {
         for (Marker marker : overlay.markers) {
             int px = pixelX(overlay, scaleFactor, marker.x);
@@ -243,71 +244,33 @@ public final class FramedMapMesher {
             if (!volume.valid[index]) {
                 continue;
             }
+            float base = Math.max(0.5f, depth[index]);
             String iconName = marker.icon == null || marker.icon.isBlank() ? "pin" : marker.icon;
-            icons.add(new FramedMapMesh.VoxelIcon(iconName, marker.color, px, pz, overlayZ + 8.0f));
+            icons.add(new FramedMapMesh.VoxelIcon(iconName, marker.color, px, pz, base + ICON_HOVER));
         }
 
-        float lineZ = overlayZ + 0.5f;
         for (Region region : overlay.regions) {
-            if (region.filled) {
-                addRegionFill(fills, overlay, region, scaleFactor, overlayZ);
-            }
             double[] pts = region.pts;
             for (int i = 0; i + 3 < pts.length; i += 2) {
-                addLine(overlay, scaleFactor, lineZ, lines,
+                addLine(volume, overlay, scaleFactor, startY, lines,
                         pts[i], pts[i + 1], pts[i + 2], pts[i + 3], region.color);
             }
             if (pts.length >= 4) {
-                addLine(overlay, scaleFactor, lineZ, lines,
+                addLine(volume, overlay, scaleFactor, startY, lines,
                         pts[pts.length - 2], pts[pts.length - 1], pts[0], pts[1], region.color);
             }
         }
 
         for (Stroke stroke : overlay.strokes) {
             for (int i = 0; i + 3 < stroke.pts.length; i += 2) {
-                addLine(overlay, scaleFactor, lineZ, lines,
+                addLine(volume, overlay, scaleFactor, startY, lines,
                         stroke.pts[i], stroke.pts[i + 1], stroke.pts[i + 2], stroke.pts[i + 3], stroke.color);
             }
         }
     }
 
-    /** Flat translucent fill, rasterised per map pixel like the 2D region fill. */
-    private static void addRegionFill(List<Quad> fills, FramedMapOverlay overlay, Region region,
-                                      int scaleFactor, float z) {
-        double[] b = region.bounds();
-        int px0 = pixelX(overlay, scaleFactor, b[0]);
-        int px1 = pixelX(overlay, scaleFactor, b[1]);
-        int pz0 = pixelZ(overlay, scaleFactor, b[2]);
-        int pz1 = pixelZ(overlay, scaleFactor, b[3]);
-        px0 = Math.max(0, px0);
-        pz0 = Math.max(0, pz0);
-        px1 = Math.min(FramedMapVolume.SIZE - 1, px1);
-        pz1 = Math.min(FramedMapVolume.SIZE - 1, pz1);
-        int color = (region.color & 0xFFFFFF) | 0x55000000;
-        for (int pz = pz0; pz <= pz1; pz++) {
-            double wz = overlay.centerZ + (pz + 0.5 - 64.0) * scaleFactor;
-            int runStart = -1;
-            for (int px = px0; px <= px1 + 1; px++) {
-                boolean inside = false;
-                if (px <= px1) {
-                    double wx = overlay.centerX + (px + 0.5 - 64.0) * scaleFactor;
-                    inside = region.contains(wx, wz);
-                }
-                if (inside && runStart < 0) {
-                    runStart = px;
-                } else if (!inside && runStart >= 0) {
-                    fills.add(new Quad(runStart, pz, z,
-                            runStart, pz + 1, z,
-                            px, pz + 1, z,
-                            px, pz, z, color));
-                    runStart = -1;
-                }
-            }
-        }
-    }
-
-    private static void addLine(FramedMapOverlay overlay, int scaleFactor,
-                                float z, List<Line> lines,
+    private static void addLine(FramedMapVolume volume, FramedMapOverlay overlay, int scaleFactor,
+                                int startY, List<Line> lines,
                                 double x0, double z0, double x1, double z1, int color) {
         int px0 = pixelX(overlay, scaleFactor, x0);
         int pz0 = pixelZ(overlay, scaleFactor, z0);
@@ -316,7 +279,15 @@ public final class FramedMapMesher {
         if (!inside(px0, pz0) || !inside(px1, pz1)) {
             return;
         }
-        lines.add(new Line(px0, pz0, z, px1, pz1, z, color));
+        int i0 = pz0 * FramedMapVolume.SIZE + px0;
+        int i1 = pz1 * FramedMapVolume.SIZE + px1;
+        if (!volume.valid[i0] || !volume.valid[i1]) {
+            return;
+        }
+        float d0 = Math.max(0.3f, (volume.surfaceY[i0] - startY) * (1.0f / scaleFactor)) + 1.5f;
+        float d1 = Math.max(0.3f, (volume.surfaceY[i1] - startY) * (1.0f / scaleFactor)) + 1.5f;
+        lines.add(new Line(px0, pz0, Math.min(MAX_DEPTH, d0),
+                px1, pz1, Math.min(MAX_DEPTH, d1), color));
     }
 
     private static boolean inside(int px, int pz) {
@@ -331,7 +302,7 @@ public final class FramedMapMesher {
         return (int) Math.round(64.0 + (worldZ - overlay.centerZ) / scaleFactor);
     }
 
-    private static FramedMapMesh finish(List<Quad> quads, List<Quad> fills, List<Line> lines,
+    private static FramedMapMesh finish(List<Quad> quads, List<Line> lines,
                                         List<FramedMapMesh.VoxelIcon> icons) {
         float[] positions = new float[quads.size() * 12];
         int[] colors = new int[quads.size()];
@@ -339,13 +310,6 @@ public final class FramedMapMesher {
             Quad quad = quads.get(i);
             System.arraycopy(quad.p, 0, positions, i * 12, 12);
             colors[i] = quad.color;
-        }
-        float[] fillPositions = new float[fills.size() * 12];
-        int[] fillColors = new int[fills.size()];
-        for (int i = 0; i < fills.size(); i++) {
-            Quad quad = fills.get(i);
-            System.arraycopy(quad.p, 0, fillPositions, i * 12, 12);
-            fillColors[i] = quad.color;
         }
         float[] linePositions = new float[lines.size() * 6];
         int[] lineColors = new int[lines.size()];
@@ -355,7 +319,17 @@ public final class FramedMapMesher {
             lineColors[i] = line.color;
         }
         return new FramedMapMesh(positions, colors, quads.size(), linePositions, lineColors,
-                lines.size(), fillPositions, fillColors, fills.size(), icons);
+                lines.size(), icons);
+    }
+
+    /** Blends the region fill into the terrain colour, like the 2D map's 0x55 fill. */
+    private static int blendFill(int argb, int fill) {
+        int a = REGION_FILL_ALPHA;
+        int inv = 255 - a;
+        int r = (((argb >> 16) & 0xFF) * inv + ((fill >> 16) & 0xFF) * a) / 255;
+        int g = (((argb >> 8) & 0xFF) * inv + ((fill >> 8) & 0xFF) * a) / 255;
+        int b = ((argb & 0xFF) * inv + (fill & 0xFF) * a) / 255;
+        return (argb & 0xFF000000) | (r << 16) | (g << 8) | b;
     }
 
     private static int neighbourHeight(FramedMapVolume volume, int px, int pz, int fallback) {

@@ -23,6 +23,9 @@ public final class FramedMapRenderer {
     /** Glow item frames make the relief and its objects look sunlit. */
     private static final float GLOW_MESH_BRIGHTNESS = 1.45f;
     private static final float GLOW_ICON_BRIGHTNESS = 1.5f;
+    /** One full eased turn, then a short rest before the next one. */
+    private static final int SPIN_TICKS = 80;
+    private static final int SPIN_PAUSE = 40;
 
     private FramedMapRenderer() {
     }
@@ -55,15 +58,11 @@ public final class FramedMapRenderer {
         pose.scale(1.0f, 1.0f, -1.0f);
         collector.submitCustomGeometry(pose, RenderTypes.entityCutout(WHITE),
                 (p, consumer) -> mesh.emit(p.pose(), consumer, meshBrightness, light));
-        if (mesh.fillCount() > 0) {
-            collector.submitCustomGeometry(pose, RenderTypes.debugQuads(),
-                    (p, consumer) -> mesh.emitFills(p.pose(), consumer, meshBrightness));
-        }
         if (mesh.lineCount() > 0) {
             collector.submitCustomGeometry(pose, RenderTypes.lines(),
                     (p, consumer) -> mesh.emitLines(p.pose(), consumer, meshBrightness));
         }
-        float angle = (gameTime % 314L) * 0.02f;
+        float angle = spinAngle(gameTime);
         boolean verticalFrame = state.direction != null && state.direction.getAxis().isVertical();
         float standUp = (float) Math.toRadians(state.direction == Direction.DOWN ? 90.0 : -90.0);
         if (!mesh.voxelIcons().isEmpty()) {
@@ -89,5 +88,17 @@ public final class FramedMapRenderer {
             });
         }
         pose.popPose();
+    }
+
+    /** Smooth full turn with a pause at the end of each revolution. */
+    private static float spinAngle(long gameTime) {
+        long cycle = SPIN_TICKS + SPIN_PAUSE;
+        long t = Math.floorMod(gameTime, cycle);
+        if (t >= SPIN_TICKS) {
+            return (float) (Math.PI * 2.0);
+        }
+        float p = t / (float) SPIN_TICKS;
+        float eased = p * p * p * (p * (p * 6.0f - 15.0f) + 10.0f);
+        return (float) (Math.PI * 2.0 * eased);
     }
 }
