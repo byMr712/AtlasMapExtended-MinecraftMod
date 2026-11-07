@@ -8,6 +8,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.webtrade.atlasmapextended.client.AtlasMapExtendedCommon;
+import org.webtrade.atlasmapextended.client.gui.MinimapFrame;
 import org.webtrade.atlasmapextended.client.gui.WorldMarkerHud;
 
 /** Replaces Fabric API's HUD element registration for the minimap. */
@@ -20,8 +21,8 @@ public class GuiMixin {
     }
 
     @Inject(method = "render", at = @At("TAIL"))
-    private void atlasmapextended$renderMinimap(GuiGraphics g, DeltaTracker delta, CallbackInfo ci) {
-        g.nextStratum();
-        AtlasMapExtendedCommon.renderMinimap(g, delta);
+    private void atlasmapextended$rememberMinimapFrame(GuiGraphics g, DeltaTracker delta, CallbackInfo ci) {
+        MinimapFrame.remember(g, delta);
     }
+
 }
