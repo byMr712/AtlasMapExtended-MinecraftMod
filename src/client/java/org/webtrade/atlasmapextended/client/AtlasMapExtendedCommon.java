@@ -170,7 +170,7 @@ public final class AtlasMapExtendedCommon {
                 if (shot == null) {
                     return;
                 }
-                ImageCache.importImage(shot, session.screenshotsDir()).thenAcceptAsync(name -> {
+                ImageCache.importDeathImage(shot, session.screenshotsDir()).thenAcceptAsync(name -> {
                     if (name != null) {
                         marker.screenshots.add(name);
                         session.saveMarkers();
