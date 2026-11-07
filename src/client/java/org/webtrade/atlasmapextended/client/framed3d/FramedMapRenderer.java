@@ -76,9 +76,9 @@ public final class FramedMapRenderer {
                     boolean arrowIcon = icon.icon().startsWith("arrow");
                     Matrix4f matrix = new Matrix4f(base).translate(icon.x(), icon.y(), icon.z());
                     if (arrowIcon) {
-                        // Flat arrows all turn the same way for the player,
-                        // with no dependence on which direction they point.
-                        matrix.rotateZ(-angle);
+                        // Bullet spin around the arrow's own line; opposite
+                        // directions are normalised to the same side.
+                        rotateAroundArrowAxis(matrix, icon.icon(), angle);
                     } else if (verticalFrame) {
                         // Map lies flat: stand the icon up out of the map and spin it
                         // around that vertical axis, like a floating plumbob.
@@ -94,6 +94,28 @@ public final class FramedMapRenderer {
             });
         }
         pose.popPose();
+    }
+
+    /** Rolls a flat arrow around its own line, with opposite directions matched. */
+    private static void rotateAroundArrowAxis(Matrix4f matrix, String icon, float angle) {
+        String suffix = icon.length() > 5 ? icon.substring(5) : "";
+        if (suffix.startsWith("_")) {
+            suffix = suffix.substring(1);
+        }
+        float x = suffix.contains("e") ? 1.0f : suffix.contains("w") ? -1.0f : 0.0f;
+        float y = suffix.contains("n") ? -1.0f : suffix.contains("s") ? 1.0f : 0.0f;
+        if (x == 0.0f && y == 0.0f) {
+            x = 1.0f;
+        }
+        // Canonical half-plane: E/W share the east axis, N/S share the north
+        // axis, diagonals share the same diagonal. Both members of an opposite
+        // pair therefore rotate the same way.
+        if (x < 0.0f || (x == 0.0f && y > 0.0f)) {
+            x = -x;
+            y = -y;
+        }
+        float len = (float) Math.sqrt(x * x + y * y);
+        matrix.rotate(angle, x / len, y / len, 0.0f);
     }
 
     /** Smooth full turn with a pause at the end of each revolution. */
