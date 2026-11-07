@@ -19,6 +19,8 @@ public class Marker {
     public int y = 64;
     public int z;
     public boolean hidden;
+    /** True for markers created automatically on death. */
+    public boolean death;
     public long created = System.currentTimeMillis();
     public List<String> screenshots = new ArrayList<>();
     /** Drawings on top of screenshots, keyed by screenshot file. Points are in image pixels. */
@@ -36,6 +38,7 @@ public class Marker {
         m.y = y;
         m.z = z;
         m.hidden = hidden;
+        m.death = death;
         m.created = created;
         m.screenshots = new ArrayList<>(screenshots);
         m.shotDrawings = copyDrawings(shotDrawings);
@@ -52,6 +55,7 @@ public class Marker {
         y = from.y;
         z = from.z;
         hidden = from.hidden;
+        death = from.death;
         screenshots = new ArrayList<>(from.screenshots);
         shotDrawings = copyDrawings(from.shotDrawings);
     }
