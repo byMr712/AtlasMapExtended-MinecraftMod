@@ -8,8 +8,9 @@ import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.material.MapColor;
 
 /**
- * Samples the top block of one map pixel. Surface only: nothing below the
- * heightmap is read, so caves and overhangs are intentionally ignored.
+ * Samples the top block of one map pixel. The relief itself is surface-only;
+ * a shallow block profile is read as well so cut faces can show rock layers.
+ * Caves and overhangs never influence the height.
  */
 public final class FramedMapSampler {
 
@@ -44,15 +45,20 @@ public final class FramedMapSampler {
 
         BlockPos pos = new BlockPos(wx, surface, wz);
         BlockState state = chunk.getBlockState(pos);
-        if (state.isAir()) {
+        MapColor mapColor = state.getMapColor(level, pos);
+        // Plants, snow layers and similar blocks can have no map colour; keep
+        // descending until the ground gets one, otherwise a hole is left.
+        while (surface > level.getMinY() && (state.isAir() || mapColor == MapColor.NONE)) {
+            surface--;
+            pos = new BlockPos(wx, surface, wz);
+            state = chunk.getBlockState(pos);
+            mapColor = state.getMapColor(level, pos);
+        }
+        if (mapColor == MapColor.NONE) {
             return;
         }
 
-        boolean water = !state.getFluidState().isEmpty();
-        MapColor mapColor = state.getMapColor(level, pos);
-        if (!water && mapColor == MapColor.NONE) {
-            return;
-        }
+        boolean water = mapColor == MapColor.WATER;
 
         volume.valid[index] = true;
         volume.surfaceY[index] = surface;

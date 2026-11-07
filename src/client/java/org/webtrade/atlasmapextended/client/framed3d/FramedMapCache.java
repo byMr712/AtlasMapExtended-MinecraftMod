@@ -22,6 +22,8 @@ public final class FramedMapCache {
     /** Extra blocks below the configured level that still get 3D relief. */
     private static final int BELOW_BASELINE = 20;
     private static final int COLUMNS_PER_TICK = 512;
+    /** Columns re-checked per tick to fill in areas that were not loaded during the first pass. */
+    private static final int RETRY_COLUMNS_PER_TICK = 512;
     private static final Map<String, Entry> ENTRIES = new HashMap<>();
     private static final ExecutorService MESH_POOL = Executors.newSingleThreadExecutor(task -> {
         Thread thread = new Thread(task, "AtlasMap-3D-Mesh");
@@ -39,8 +41,10 @@ public final class FramedMapCache {
         byte[] explored;
         long exploredHash;
         int cursor;
+        int retryCursor;
         boolean sampling;
         boolean building;
+        boolean dirty;
         int buildGeneration = -1;
         int generation;
         FramedMapMesh mesh;
@@ -74,6 +78,7 @@ public final class FramedMapCache {
             FramedMapVolume stored = FramedMapStorage.load(key);
             if (stored != null) {
                 entry.volume = stored;
+                entry.explored = data.colors.clone();
                 entry.exploredHash = hash;
                 entry.builtHash = hash;
                 startBuild(entry);
@@ -101,7 +106,9 @@ public final class FramedMapCache {
         entry.explored = data.colors.clone();
         entry.exploredHash = hash;
         entry.cursor = 0;
+        entry.retryCursor = 0;
         entry.sampling = true;
+        entry.dirty = false;
         entry.generation++;
     }
 
@@ -111,20 +118,60 @@ public final class FramedMapCache {
             return;
         }
         for (Entry entry : ENTRIES.values()) {
-            if (!entry.sampling || !entry.key.dimension().equals(level.dimension())) {
+            if (!entry.key.dimension().equals(level.dimension())) {
                 continue;
             }
-            int end = Math.min(FramedMapVolume.COLUMNS, entry.cursor + COLUMNS_PER_TICK);
-            for (; entry.cursor < end; entry.cursor++) {
-                int px = entry.cursor % FramedMapVolume.SIZE;
-                int pz = entry.cursor / FramedMapVolume.SIZE;
-                FramedMapSampler.sampleColumn(level, entry.volume, entry.key, entry.explored, px, pz);
+            if (entry.sampling) {
+                int end = Math.min(FramedMapVolume.COLUMNS, entry.cursor + COLUMNS_PER_TICK);
+                for (; entry.cursor < end; entry.cursor++) {
+                    int px = entry.cursor % FramedMapVolume.SIZE;
+                    int pz = entry.cursor / FramedMapVolume.SIZE;
+                    FramedMapSampler.sampleColumn(level, entry.volume, entry.key, entry.explored, px, pz);
+                }
+                if (entry.cursor >= FramedMapVolume.COLUMNS) {
+                    entry.sampling = false;
+                    FramedMapStorage.save(entry.key, entry.volume);
+                    startBuild(entry);
+                }
+                continue;
             }
-            if (entry.cursor >= FramedMapVolume.COLUMNS) {
-                entry.sampling = false;
-                FramedMapStorage.save(entry.key, entry.volume);
-                startBuild(entry);
+            retryMissing(level, entry);
+        }
+    }
+
+    /**
+     * The first pass can run before every chunk of the map is loaded; those
+     * columns stay empty and used to stay empty forever. Re-check them in the
+     * background and rebuild once something was filled in.
+     */
+    private static void retryMissing(ClientLevel level, Entry entry) {
+        if (entry.building || entry.explored == null) {
+            return;
+        }
+        int filled = 0;
+        int end = Math.min(FramedMapVolume.COLUMNS, entry.retryCursor + RETRY_COLUMNS_PER_TICK);
+        for (; entry.retryCursor < end; entry.retryCursor++) {
+            int index = entry.retryCursor;
+            if (entry.explored[index] == 0 || entry.volume.valid[index]) {
+                continue;
             }
+            int px = index % FramedMapVolume.SIZE;
+            int pz = index / FramedMapVolume.SIZE;
+            FramedMapSampler.sampleColumn(level, entry.volume, entry.key, entry.explored, px, pz);
+            if (entry.volume.valid[index]) {
+                filled++;
+            }
+        }
+        if (entry.retryCursor >= FramedMapVolume.COLUMNS) {
+            entry.retryCursor = 0;
+        }
+        if (filled > 0) {
+            entry.dirty = true;
+        }
+        if (entry.dirty && level.getGameTime() - entry.lastBuildTick > 40) {
+            entry.dirty = false;
+            FramedMapStorage.save(entry.key, entry.volume);
+            startBuild(entry);
         }
     }
 
