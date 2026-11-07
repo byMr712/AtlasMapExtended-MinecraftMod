@@ -64,41 +64,69 @@ public final class FramedMapMesh {
         }
     }
 
+    public static final class IconInstance {
+        public final float x;
+        public final float y;
+        public final float z;
+        public final int color;
+        public final float size;
+
+        public IconInstance(float x, float y, float z, int color, float size) {
+            this.x = x;
+            this.y = y;
+            this.z = z;
+            this.color = color;
+            this.size = size;
+        }
+    }
+
     public static final class IconGroup {
         public final Identifier texture;
         public final Identifier source;
-        private final float[] positions;
-        private final int[] colors;
-        private final int count;
+        private final List<IconInstance> instances;
 
-        IconGroup(Identifier texture, Identifier source, float[] positions, int[] colors, int count) {
+        IconGroup(Identifier texture, Identifier source, List<IconInstance> instances) {
             this.texture = texture;
             this.source = source;
-            this.positions = positions;
-            this.colors = colors;
-            this.count = count;
+            this.instances = instances;
         }
 
         public int count() {
-            return count;
+            return instances.size();
         }
 
-        public void emit(Matrix4fc matrix, VertexConsumer consumer) {
-            for (int quad = 0; quad < count; quad++) {
-                int p = quad * 12;
-                int color = colors[quad];
-                for (int vertex = 0; vertex < 4; vertex++) {
-                    int o = p + vertex * 3;
-                    float u = vertex == 0 || vertex == 3 ? 0.0f : 1.0f;
-                    float v = vertex < 2 ? 0.0f : 1.0f;
-                    consumer.addVertex(matrix, positions[o], positions[o + 1], positions[o + 2])
-                            .setColor(color)
-                            .setUv(u, v)
-                            .setLight(15728880)
-                            .setOverlay(0)
-                            .setNormal(0.0f, 0.0f, 1.0f);
-                }
+        /** Two crossed quads per icon, slowly rotating around the vertical axis. */
+        public void emit(Matrix4fc matrix, VertexConsumer consumer, float angle) {
+            float cos = (float) Math.cos(angle);
+            float sin = (float) Math.sin(angle);
+            for (IconInstance icon : instances) {
+                float s = icon.size;
+                cube(matrix, consumer, icon, cos, sin, s);
+                cube(matrix, consumer, icon, -sin, cos, s);
             }
+        }
+
+        private static void cube(Matrix4fc matrix, VertexConsumer consumer, IconInstance icon,
+                                 float hx, float hz, float s) {
+            float cx = icon.x;
+            float cy = icon.y;
+            float cz = icon.z;
+
+            // clockwise order seen from the front: TL, TR, BR, BL
+            vertex(matrix, consumer, icon, cx - hx * s, cy - s, cz - hz * s, 0.0f, 0.0f);
+            vertex(matrix, consumer, icon, cx + hx * s, cy - s, cz + hz * s, 1.0f, 0.0f);
+            vertex(matrix, consumer, icon, cx + hx * s, cy + s, cz + hz * s, 1.0f, 1.0f);
+            vertex(matrix, consumer, icon, cx - hx * s, cy + s, cz - hz * s, 0.0f, 1.0f);
+        }
+
+        private static void vertex(Matrix4fc matrix, VertexConsumer consumer, IconInstance icon,
+                                   float x, float y, float z, float u, float v) {
+            consumer.addVertex(matrix, x, y, z)
+                    .setColor(icon.color)
+                    .setUv(u, v)
+                    .setLight(15728880)
+                    .setOverlay(0)
+                    .setNormal(0.0f, 0.0f, 1.0f);
         }
     }
 }

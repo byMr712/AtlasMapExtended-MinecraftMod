@@ -48,10 +48,12 @@ public final class FramedMapRenderer {
             collector.submitCustomGeometry(pose, RenderTypes.lines(),
                     (p, consumer) -> mesh.emitLines(p.pose(), consumer));
         }
+        long gameTime = level.getGameTime();
+        float angle = (gameTime % 3600L) * 0.02f;
         for (FramedMapMesh.IconGroup group : mesh.iconGroups()) {
             org.webtrade.atlasmapextended.client.gui.Paper.ensureFrom(group.texture, group.source);
             collector.submitCustomGeometry(pose, RenderTypes.entityCutout(group.texture),
-                    (p, consumer) -> group.emit(p.pose(), consumer));
+                    (p, consumer) -> group.emit(p.pose(), consumer, angle));
         }
     }
 }

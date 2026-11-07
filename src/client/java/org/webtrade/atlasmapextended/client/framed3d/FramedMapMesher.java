@@ -53,7 +53,7 @@ public final class FramedMapMesher {
     private static final class IconBuilder {
         final net.minecraft.resources.Identifier texture;
         final net.minecraft.resources.Identifier source;
-        final List<Quad> quads = new ArrayList<>();
+        final List<FramedMapMesh.IconInstance> instances = new ArrayList<>();
 
         IconBuilder(net.minecraft.resources.Identifier texture, net.minecraft.resources.Identifier source) {
             this.texture = texture;
@@ -214,12 +214,7 @@ public final class FramedMapMesher {
             IconBuilder builder = icons.computeIfAbsent(texture.toString(),
                     ignored -> new IconBuilder(texture, source));
 
-            builder.quads.add(new Quad(
-                    px - 4, pz - 4, z,
-                    px + 4, pz - 4, z,
-                    px + 4, pz + 4, z,
-                    px - 4, pz + 4, z,
-                    color));
+            builder.instances.add(new FramedMapMesh.IconInstance(px, pz, z, color, 4.0f));
         }
 
         for (Region region : overlay.regions) {
@@ -292,17 +287,10 @@ public final class FramedMapMesher {
         }
         List<FramedMapMesh.IconGroup> groups = new ArrayList<>();
         for (IconBuilder builder : icons.values()) {
-            if (builder.quads.isEmpty()) {
+            if (builder.instances.isEmpty()) {
                 continue;
             }
-            float[] p = new float[builder.quads.size() * 12];
-            int[] c = new int[builder.quads.size()];
-            for (int i = 0; i < builder.quads.size(); i++) {
-                Quad quad = builder.quads.get(i);
-                System.arraycopy(quad.p, 0, p, i * 12, 12);
-                c[i] = quad.color;
-            }
-            groups.add(new FramedMapMesh.IconGroup(builder.texture, builder.source, p, c, builder.quads.size()));
+            groups.add(new FramedMapMesh.IconGroup(builder.texture, builder.source, builder.instances));
         }
         return new FramedMapMesh(positions, colors, quads.size(), linePositions, lineColors, lines.size(), groups);
     }
