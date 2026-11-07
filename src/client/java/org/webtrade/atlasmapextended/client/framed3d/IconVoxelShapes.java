@@ -36,10 +36,10 @@ public final class IconVoxelShapes {
             this.depth = depth;
         }
 
-        public void emit(Matrix4fc matrix, VertexConsumer consumer) {
+        public void emit(Matrix4fc matrix, VertexConsumer consumer, float brightness) {
             for (int quad = 0; quad < count; quad++) {
                 int p = quad * 12;
-                int color = colors[quad];
+                int color = FramedMapMesh.brighten(colors[quad], brightness);
                 for (int vertex = 0; vertex < 4; vertex++) {
                     int o = p + vertex * 3;
                     consumer.addVertex(matrix, positions[o], positions[o + 1], positions[o + 2])

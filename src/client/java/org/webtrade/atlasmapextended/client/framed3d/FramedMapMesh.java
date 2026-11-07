@@ -36,10 +36,10 @@ public final class FramedMapMesh {
         return voxelIcons;
     }
 
-    public void emit(Matrix4fc matrix, VertexConsumer consumer) {
+    public void emit(Matrix4fc matrix, VertexConsumer consumer, float brightness) {
         for (int quad = 0; quad < count; quad++) {
             int p = quad * 12;
-            int color = colors[quad];
+            int color = brighten(colors[quad], brightness);
             for (int vertex = 0; vertex < 4; vertex++) {
                 int o = p + vertex * 3;
                 consumer.addVertex(matrix, positions[o], positions[o + 1], positions[o + 2])
@@ -53,10 +53,10 @@ public final class FramedMapMesh {
     }
 
     /** Two vertices per segment; RenderTypes.lines() consumes pairs. */
-    public void emitLines(Matrix4fc matrix, VertexConsumer consumer) {
+    public void emitLines(Matrix4fc matrix, VertexConsumer consumer, float brightness) {
         for (int line = 0; line < lineCount; line++) {
             int o = line * 6;
-            int c = lineColors[line];
+            int c = brighten(lineColors[line], brightness);
             consumer.addVertex(matrix, linePositions[o], linePositions[o + 1], linePositions[o + 2])
                     .setColor(c)
                     .setNormal(0.0f, 1.0f, 0.0f)
@@ -66,6 +66,18 @@ public final class FramedMapMesh {
                     .setNormal(0.0f, 1.0f, 0.0f)
                     .setLineWidth(2.0f);
         }
+    }
+
+    /** Raises the RGB channels while keeping alpha untouched. */
+    static int brighten(int argb, float factor) {
+        if (factor <= 1.0f) {
+            return argb;
+        }
+        int a = argb >>> 24;
+        int r = Math.min(255, Math.round(((argb >> 16) & 0xFF) * factor));
+        int g = Math.min(255, Math.round(((argb >> 8) & 0xFF) * factor));
+        int b = Math.min(255, Math.round((argb & 0xFF) * factor));
+        return (a << 24) | (r << 16) | (g << 8) | b;
     }
 
     /** One real 3D voxel icon floating above the surface. */

@@ -20,6 +20,9 @@ import org.webtrade.atlasmapextended.client.gui.Paper;
 public final class FramedMapRenderer {
     private static final Identifier WHITE = Paper.id("textures/gui/white.png");
     private static final float ICON_SCALE = 1.0f;
+    /** Glow item frames make the relief and its objects look sunlit. */
+    private static final float GLOW_MESH_BRIGHTNESS = 1.45f;
+    private static final float GLOW_ICON_BRIGHTNESS = 1.5f;
 
     private FramedMapRenderer() {
     }
@@ -44,13 +47,15 @@ public final class FramedMapRenderer {
             return;
         }
         long gameTime = level.getGameTime();
+        float meshBrightness = state.isGlowFrame ? GLOW_MESH_BRIGHTNESS : 1.0f;
+        float iconBrightness = state.isGlowFrame ? GLOW_ICON_BRIGHTNESS : 1.0f;
         pose.pushPose();
         pose.scale(1.0f, 1.0f, -1.0f);
         collector.submitCustomGeometry(pose, RenderTypes.entityCutout(WHITE),
-                (p, consumer) -> mesh.emit(p.pose(), consumer));
+                (p, consumer) -> mesh.emit(p.pose(), consumer, meshBrightness));
         if (mesh.lineCount() > 0) {
             collector.submitCustomGeometry(pose, RenderTypes.lines(),
-                    (p, consumer) -> mesh.emitLines(p.pose(), consumer));
+                    (p, consumer) -> mesh.emitLines(p.pose(), consumer, meshBrightness));
         }
         float angle = (gameTime % 314L) * 0.02f;
         boolean verticalFrame = state.direction != null && state.direction.getAxis().isVertical();
@@ -73,7 +78,7 @@ public final class FramedMapRenderer {
                     }
                     matrix.scale(ICON_SCALE, ICON_SCALE, ICON_SCALE)
                             .translate(-8.0f, -16.0f, -shape.depth / 2.0f);
-                    shape.emit(matrix, consumer);
+                    shape.emit(matrix, consumer, iconBrightness);
                 }
             });
         }
