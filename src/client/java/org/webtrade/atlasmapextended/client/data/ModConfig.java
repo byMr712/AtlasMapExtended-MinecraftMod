@@ -16,7 +16,7 @@ public class ModConfig {
     public int minimapZoomIndex = 0;
     /** "3D framed maps": extruded terrain for maps in item frames. Enabled by default. */
     public boolean framedMaps3D = true;
-    /** Base world height for the framed relief; everything below stays flat (like Maps3D "Start from Y = 60"). */
+    /** Main world height for the framed relief; 20 blocks below it still render as the map base. */
     public int framedMapsStartY = 60;
     /** 0 = off, 1 = 1, 2 = 5, 3 = 10, 4 = unlimited. */
     public int deathMarkers = 2;

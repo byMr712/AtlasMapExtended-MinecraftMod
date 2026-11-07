@@ -19,6 +19,8 @@ import java.util.concurrent.Executors;
  * baked result.
  */
 public final class FramedMapCache {
+    /** Extra blocks below the configured level that still get 3D relief. */
+    private static final int BELOW_BASELINE = 20;
     private static final int COLUMNS_PER_TICK = 512;
     private static final Map<String, Entry> ENTRIES = new HashMap<>();
     private static final ExecutorService MESH_POOL = Executors.newSingleThreadExecutor(task -> {
@@ -138,7 +140,10 @@ public final class FramedMapCache {
                 maxSurface = Math.max(maxSurface, entry.volume.surfaceY[i]);
             }
         }
-        int startY = chooseStartY(ModConfig.get().framedMapsStartY, minSurface, maxSurface);
+        int mainY = chooseStartY(ModConfig.get().framedMapsStartY, minSurface, maxSurface);
+        // The configured level is the "main" height; terrain up to 20 blocks
+        // below it is still part of the relief and forms the map's base.
+        int startY = Math.max(entry.key.minY(), mainY - BELOW_BASELINE);
         entry.building = true;
         entry.buildGeneration = entry.generation;
         int generation = entry.generation;

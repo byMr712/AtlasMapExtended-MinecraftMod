@@ -297,7 +297,7 @@
   "atlasmapextended.settings.death_markers_note": "Only new deaths are counted. Existing death markers are never deleted; after changing the limit, counting starts from zero.",
   "atlasmapextended.settings.death_markers_tip": "How many death markers to create: off, 1, 5, 10 or unlimited. Changing this never deletes existing markers - only new deaths are counted, from zero.",
   "atlasmapextended.settings.framed_maps_3d": "3D framed maps: %s",
-  "atlasmapextended.settings.framed_maps_3d_tip": "Extruded terrain for filled maps in item frames. Everything below Y=60 stays flat. Enabled by default.",
+  "atlasmapextended.settings.framed_maps_3d_tip": "Extruded terrain for filled maps in item frames. Also shows 20 blocks of ground below the main height (Y=60). Enabled by default.",
   "atlasmapextended.death.off": "Off",
   "atlasmapextended.death.one": "1",
   "atlasmapextended.death.five": "5",
