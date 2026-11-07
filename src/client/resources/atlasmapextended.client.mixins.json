@@ -6,8 +6,10 @@
   "client": [
     "ClientChunkCacheMixin",
     "ClientPacketListenerMixin",
+    "ItemInHandRendererMixin",
     "GameRendererMixin",
     "HudMixin",
+    "ItemFrameRendererMixin",
     "LanguageManagerMixin",
     "MinecraftMixin",
     "OptionsMixin",

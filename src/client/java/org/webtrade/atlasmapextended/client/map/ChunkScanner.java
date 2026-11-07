@@ -104,7 +104,7 @@ public final class ChunkScanner {
     }
 
     /** Converts a vanilla map colour to the muted, inked papyrus palette. */
-    static int papyrus(int rgb, int h, int hn, int hw, int waterDepth, int wx, int wz) {
+    public static int papyrus(int rgb, int h, int hn, int hw, int waterDepth, int wx, int wz) {
         float r;
         float g;
         float b;

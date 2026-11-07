@@ -14,6 +14,10 @@ public class ModConfig {
     /** Bumped when the size list changes, so old indices can be remapped once. */
     public int minimapSizesVersion = 0;
     public int minimapZoomIndex = 0;
+    /** "3D framed maps": extruded terrain for maps in item frames. Enabled by default. */
+    public boolean framedMaps3D = true;
+    /** Main world height for the framed relief; 20 blocks below it still render as the map base. */
+    public int framedMapsStartY = 60;
     /** 0 = off, 1 = 1, 2 = 5, 3 = 10, 4 = unlimited. */
     public int deathMarkers = 2;
     /** New death markers created since the limit was last applied. */
@@ -86,6 +90,7 @@ public class ModConfig {
     private void clamp() {
         minimapSizeIndex = Math.floorMod(minimapSizeIndex, MINIMAP_SIZES.length);
         minimapZoomIndex = Math.max(0, Math.min(MINIMAP_ZOOMS.length - 1, minimapZoomIndex));
+        framedMapsStartY = Math.max(-64, Math.min(320, framedMapsStartY));
         deathMarkers = Math.max(0, Math.min(4, deathMarkers));
         deathMarkersCreated = Math.max(0, deathMarkersCreated);
         minimapCorner = Math.floorMod(minimapCorner, 4);

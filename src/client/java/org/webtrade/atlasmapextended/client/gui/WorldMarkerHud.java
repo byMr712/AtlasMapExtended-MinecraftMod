@@ -196,7 +196,9 @@ public final class WorldMarkerHud {
         String name = m.name == null || m.name.isBlank() ? T.s("marker.unnamed") : m.name;
         name = font.plainSubstrByWidth(name, Math.min(180, sw - 12));
         String dist = T.s("marker.distance", Math.round(distance));
-        int tw = Math.max(font.width(name), font.width(dist));
+        int nameW = font.width(name);
+        int distW = font.width(dist);
+        int tw = Math.max(nameW, distW);
         int tx = Math.max(4, Math.min(sw - tw - 4, sx - tw / 2));
         int ty = sy + ICON_SIZE / 2 + 4;
         if (ty + 21 > sh - 4) {
@@ -206,7 +208,7 @@ public final class WorldMarkerHud {
         g.fill(tx - 4, ty - 2, tx + tw + 4, ty + 19, Paper.a(Paper.CREAM, 0xE8));
         g.outline(tx - 4, ty - 2, tw + 8, 21, Paper.a(Paper.INK, 0xA0));
         g.text(font, name, tx, ty, Paper.INK, false);
-        g.text(font, dist, tx, ty + 10, Paper.a(Paper.INK, 0xB0), false);
+        g.text(font, dist, tx + (nameW - distW) / 2, ty + 10, Paper.a(Paper.INK, 0xB0), false);
     }
     /** Frees icon textures that have been out of view for a while, so they load again on return. */
     private static void releaseUnused(long now) {

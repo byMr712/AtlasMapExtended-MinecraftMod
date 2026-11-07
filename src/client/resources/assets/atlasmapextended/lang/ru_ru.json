@@ -296,6 +296,8 @@
   "atlasmapextended.settings.death_markers": "Метки смертей: %s",
   "atlasmapextended.settings.death_markers_note": "Учитываются только новые смерти. Существующие метки смертей никогда не удаляются; после смены лимита отсчёт начинается с нуля.",
   "atlasmapextended.settings.death_markers_tip": "Сколько меток смертей создавать: выкл, 1, 5, 10 или бесконечно. Смена значения никогда не удаляет существующие метки — считаются только новые смерти, с нуля.",
+  "atlasmapextended.settings.framed_maps_3d": "Карты в рамке 3D: %s",
+  "atlasmapextended.settings.framed_maps_3d_tip": "Объёмный рельеф для заполненных карт в рамках. Показывает также 20 блоков земли ниже основной высоты (Y=60). По умолчанию включено.",
   "atlasmapextended.death.off": "Выкл",
   "atlasmapextended.death.one": "1 шт",
   "atlasmapextended.death.five": "5 шт",

@@ -74,7 +74,7 @@ public class SettingsScreen extends Screen {
         boolean twoCols = pw >= 380;
         int colW = twoCols ? (pw - 30) / 2 : pw - 20;
         int designH = 12 + 16 + 4 + 16 + 6
-                + font.split(T.tr("settings.death_markers_note"), colW).size() * 10 + 4;
+                + font.split(T.tr("settings.death_markers_note"), colW).size() * 10 + 4 + 4 + ROW;
         int optionsH = 12 + 4 * ROW + 4 + 12 + 3 * ROW + 24;
         int contentH = twoCols ? Math.max(designH, optionsH) : designH + 8 + optionsH;
         int ph = Math.min(height - 16, contentH + 54);
@@ -137,6 +137,14 @@ public class SettingsScreen extends Screen {
         for (FormattedCharSequence l : font.split(T.tr("settings.death_markers_note"), w)) {
             g.text(font, l, x, y + 1, Paper.HINT, false);
             y += 10;
+        }
+        y += 4;
+        int framedY = y;
+        y = option(g, mx, my, x, y, w, top, bottom,
+                T.tr("settings.framed_maps_3d", onOff(cfg.framedMaps3D)),
+                () -> cfg.framedMaps3D = !cfg.framedMaps3D);
+        if (Paper.inside(mx, my, x, framedY, w, 16) && my >= top && my < bottom) {
+            tooltip = T.tr("settings.framed_maps_3d_tip");
         }
     }
     private void drawThemePopup(GuiGraphicsExtractor g, int mx, int my) {
