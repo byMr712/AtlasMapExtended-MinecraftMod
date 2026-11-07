@@ -19,6 +19,7 @@ import org.webtrade.atlasmapextended.client.gui.Paper;
  */
 public final class FramedMapRenderer {
     private static final Identifier WHITE = Paper.id("textures/gui/white.png");
+    private static final float ICON_SCALE = 1.0f;
 
     private FramedMapRenderer() {
     }
@@ -70,7 +71,7 @@ public final class FramedMapRenderer {
                     } else {
                         matrix.rotateY(angle);
                     }
-                    matrix.scale(0.5f, 0.5f, 0.5f)
+                    matrix.scale(ICON_SCALE, ICON_SCALE, ICON_SCALE)
                             .translate(-8.0f, -16.0f, -shape.depth / 2.0f);
                     shape.emit(matrix, consumer);
                 }
