@@ -58,5 +58,26 @@ public final class FramedMapSampler {
         volume.surfaceY[index] = surface;
         volume.water[index] = water;
         volume.rgb[index] = water ? MapColor.WATER.col : mapColor.col;
+        sampleLayers(level, chunk, volume, index, wx, surface, wz, mapColor);
+    }
+
+    /** Records the first blocks below the surface so cut faces show real strata. */
+    private static void sampleLayers(ClientLevel level, LevelChunk chunk, FramedMapVolume volume,
+                                     int index, int wx, int surface, int wz, MapColor surfaceColor) {
+        int packed = surfaceColor.getPackedId(MapColor.Brightness.NORMAL) & 0xFF;
+        int base = index * FramedMapVolume.LAYERS;
+        for (int layer = 0; layer < FramedMapVolume.LAYERS; layer++) {
+            int y = surface - layer - 1;
+            if (y < level.getMinY()) {
+                volume.layerColor[base + layer] = (byte) packed;
+                continue;
+            }
+            BlockPos pos = new BlockPos(wx, y, wz);
+            MapColor color = chunk.getBlockState(pos).getMapColor(level, pos);
+            if (color != MapColor.NONE) {
+                packed = color.getPackedId(MapColor.Brightness.NORMAL) & 0xFF;
+            }
+            volume.layerColor[base + layer] = (byte) packed;
+        }
     }
 }

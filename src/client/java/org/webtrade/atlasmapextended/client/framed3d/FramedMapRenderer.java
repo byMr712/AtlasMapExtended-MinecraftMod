@@ -18,6 +18,8 @@ import org.webtrade.atlasmapextended.client.gui.Paper;
  */
 public final class FramedMapRenderer {
     private static final Identifier WHITE = Paper.id("textures/gui/white.png");
+    /** Ticks over which the relief grows from the lowest to the highest surface. */
+    private static final int REVEAL_TICKS = 120;
 
     private FramedMapRenderer() {
     }
@@ -41,20 +43,35 @@ public final class FramedMapRenderer {
         if (mesh == null) {
             return;
         }
+        long gameTime = level.getGameTime();
+        long revealStart = mesh.revealStart();
+        float maxZ = Float.MAX_VALUE;
+        if (revealStart >= 0) {
+            float progress = Math.min(1.0f, (gameTime - revealStart) / (float) REVEAL_TICKS);
+            if (progress >= 1.0f) {
+                maxZ = Float.MAX_VALUE;
+            } else {
+                maxZ = mesh.revealMin() + (mesh.revealMax() - mesh.revealMin()) * progress + 0.001f;
+            }
+        }
+
         pose.pushPose();
         pose.scale(1.0f, 1.0f, -1.0f);
+        float visibleZ = maxZ;
         collector.submitCustomGeometry(pose, RenderTypes.entityCutout(WHITE),
-                (p, consumer) -> mesh.emit(p.pose(), consumer));
+                (p, consumer) -> mesh.emit(p.pose(), consumer, visibleZ));
         if (mesh.lineCount() > 0) {
             collector.submitCustomGeometry(pose, RenderTypes.lines(),
-                    (p, consumer) -> mesh.emitLines(p.pose(), consumer));
+                    (p, consumer) -> mesh.emitLines(p.pose(), consumer, visibleZ));
         }
-        long gameTime = level.getGameTime();
         float angle = (gameTime % 314L) * 0.02f;
         if (!mesh.voxelIcons().isEmpty()) {
             collector.submitCustomGeometry(pose, RenderTypes.entityCutout(WHITE), (p, consumer) -> {
                 Matrix4f base = p.pose();
                 for (FramedMapMesh.VoxelIcon icon : mesh.voxelIcons()) {
+                    if (icon.z() > visibleZ) {
+                        continue;
+                    }
                     IconVoxelShapes.Shape shape = IconVoxelShapes.get(icon.icon(), icon.tint());
                     if (shape == null) {
                         continue;

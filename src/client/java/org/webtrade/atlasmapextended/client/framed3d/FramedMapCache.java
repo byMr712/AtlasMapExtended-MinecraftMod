@@ -163,11 +163,14 @@ public final class FramedMapCache {
                 if (current != entry || entry.generation != generation) {
                     return;
                 }
+                long now = Minecraft.getInstance().level != null
+                        ? Minecraft.getInstance().level.getGameTime() : 0L;
+                boolean firstAppearance = entry.mesh == null || entry.mesh.revealStart() < 0;
+                mesh.setRevealStart(firstAppearance ? now : entry.mesh.revealStart());
                 entry.mesh = mesh;
                 entry.builtHash = hash;
                 entry.building = false;
-                entry.lastBuildTick = Minecraft.getInstance().level != null
-                        ? Minecraft.getInstance().level.getGameTime() : 0L;
+                entry.lastBuildTick = now;
             });
         });
     }
