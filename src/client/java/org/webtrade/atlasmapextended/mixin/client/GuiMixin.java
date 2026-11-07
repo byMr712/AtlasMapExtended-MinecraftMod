@@ -29,7 +29,13 @@ public class GuiMixin {
 
     @Inject(method = "render", at = @At("HEAD"))
     private void atlasmapextended$renderWorldMarkers(GuiGraphics g, DeltaTracker delta, CallbackInfo ci) {
+        MinimapFrame.beginFrame();
         WorldMarkerHud.render(g);
+    }
+
+    @Inject(method = "render", at = @At("TAIL"))
+    private void atlasmapextended$renderMinimapFallback(GuiGraphics g, DeltaTracker delta, CallbackInfo ci) {
+        MinimapFrame.draw(g, delta);
     }
 
 }
