@@ -189,21 +189,19 @@ public class SettingsScreen extends Screen {
         if (pendingDeathMarkers != cfg.deathMarkers) {
             int oldMax = deathMarkerMax(cfg.deathMarkers);
             int newMax = deathMarkerMax(pendingDeathMarkers);
-            int existing = 0;
-            MapSession session = MapManager.live();
-            if (session != null) {
-                for (Marker m : session.markers) {
-                    if (m.death) {
-                        existing++;
+            int oldEpoch = cfg.deathEpoch;
+            int epoch = oldEpoch + 1;
+            cfg.deathEpoch = epoch;
+            if (pendingDeathMarkers != 4 && newMax > oldMax) {
+                MapSession session = MapManager.live();
+                if (session != null) {
+                    for (Marker m : session.markers) {
+                        if (m.death && m.deathEpoch == oldEpoch) {
+                            m.deathEpoch = epoch;
+                        }
                     }
+                    session.saveMarkers();
                 }
-            }
-            if (pendingDeathMarkers == 4) {
-                cfg.deathMarkersCreated = 0;
-            } else if (newMax > oldMax) {
-                cfg.deathMarkersCreated = Math.min(existing, oldMax);
-            } else {
-                cfg.deathMarkersCreated = 0;
             }
             cfg.deathMarkers = pendingDeathMarkers;
         }
