@@ -84,6 +84,16 @@ public final class HeldMapTextures {
         return entry.id;
     }
 
+    /** Vanilla water brightness levels (LOW..HIGH) mapped to the mod's 1..14 depth palette. */
+    private static int waterDepth(int brightness) {
+        return switch (brightness) {
+            case 2 -> 1;   // HIGH: shallow
+            case 1 -> 5;   // NORMAL
+            case 0 -> 10;  // LOW: deep
+            default -> 14; // LOWEST: deepest
+        };
+    }
+
     private static FramedMapOverlay overlayFor(MapId mapId, MapItemSavedData data) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null) {
@@ -105,10 +115,11 @@ public final class HeldMapTextures {
                     argb = PAPER_LIGHT;
                 } else {
                     // Use the base map colour, not vanilla's baked brightness, so
-                    // the held map matches the mod's own papyrus palette.
+                    // the held map matches the mod's own papyrus palette. Water
+                    // keeps vanilla's brightness bits, which encode its depth.
                     MapColor color = MapColor.byId(packed >> 2);
-                    argb = ChunkScanner.papyrus(color.col, 0, 0, 0,
-                            color == MapColor.WATER ? 1 : 0, x, y);
+                    int waterDepth = color == MapColor.WATER ? waterDepth(packed & 3) : 0;
+                    argb = ChunkScanner.papyrus(color.col, 0, 0, 0, waterDepth, x, y);
                 }
                 image.setPixelABGR(x, y, abgr(argb));
             }
