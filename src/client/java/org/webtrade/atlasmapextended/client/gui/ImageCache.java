@@ -10,6 +10,7 @@ import org.webtrade.atlasmapextended.client.data.Storage;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -150,6 +151,46 @@ public final class ImageCache {
                 return name;
             } catch (Exception ex) {
                 Storage.LOG.warn("Failed to import image {}", source, ex);
+                return null;
+            }
+        }, Storage.IO);
+    }
+
+    /** Imports a death screenshot, giving both the source and the stored copy a death_ name. */
+    public static CompletableFuture<String> importDeathImage(Path source, Path targetDir) {
+        return CompletableFuture.supplyAsync(() -> {
+            Path named = source;
+            try {
+                String name = source.getFileName().toString();
+                if (!name.startsWith("death_")) {
+                    Path target = source.resolveSibling("death_" + name);
+                    Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);
+                    named = target;
+                }
+            } catch (Exception ex) {
+                // fall back to the original file; the stored copy still gets the prefix
+            }
+            String baseName = named.getFileName().toString();
+            if (!baseName.startsWith("death_")) {
+                baseName = "death_" + baseName;
+            }
+            try (InputStream in = Files.newInputStream(named)) {
+                NativeImage img = NativeImage.read(in);
+                Files.createDirectories(targetDir);
+                String fileName = baseName;
+                Path target = targetDir.resolve(fileName);
+                if (Files.exists(target)) {
+                    fileName = java.util.UUID.randomUUID() + "_" + baseName;
+                    target = targetDir.resolve(fileName);
+                }
+                try {
+                    img.writeToFile(target);
+                } finally {
+                    img.close();
+                }
+                return fileName;
+            } catch (Exception ex) {
+                Storage.LOG.warn("Failed to import death image {}", named, ex);
                 return null;
             }
         }, Storage.IO);
