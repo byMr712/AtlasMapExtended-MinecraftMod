@@ -96,7 +96,12 @@ public final class FramedMapRenderer {
         pose.popPose();
     }
 
-    /** Rolls a flat arrow around its own line, with opposite directions matched. */
+    /**
+     * Rolls a flat arrow around its own line, with opposite directions matched.
+     * This is the agreed "bullet" behaviour: do NOT replace it with a spin
+     * around the map normal or the vertical axis — both were tried and looked
+     * wrong. See {@code docs/framed-map-3d.md}.
+     */
     private static void rotateAroundArrowAxis(Matrix4f matrix, String icon, float angle) {
         String suffix = icon.length() > 5 ? icon.substring(5) : "";
         if (suffix.startsWith("_")) {
