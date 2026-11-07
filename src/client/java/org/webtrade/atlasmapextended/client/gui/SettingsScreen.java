@@ -21,6 +21,9 @@ public class SettingsScreen extends Screen {
     private final Screen parent;
     private final ModConfig cfg = ModConfig.get();
     private final List<Hit> hits = new ArrayList<>();
+    private final List<Hit> popupHits = new ArrayList<>();
+    private boolean themePopup;
+    private int pendingDeathMarkers;
     private Component tooltip;
     private double scroll;
     private int maxScroll;
@@ -28,6 +31,7 @@ public class SettingsScreen extends Screen {
     public SettingsScreen(Screen parent) {
         super(T.tr("settings.title"));
         this.parent = parent;
+        this.pendingDeathMarkers = cfg.deathMarkers;
     }
 
     @Override
@@ -65,9 +69,10 @@ public class SettingsScreen extends Screen {
         int px = (width - pw) / 2;
         boolean twoCols = pw >= 380;
         int colW = twoCols ? (pw - 30) / 2 : pw - 20;
-        int themesH = 12 + (Theme.ALL.size() + 1) / 2 * (TILE_H + 4);
-        int optionsH = 12 + 6 * ROW + 16 + 2 * ROW + 32;
-        int contentH = twoCols ? Math.max(themesH, optionsH) : themesH + 8 + optionsH;
+        int designH = 12 + 16 + 4 + 16 + 6
+                + font.split(T.tr("settings.death_markers_note"), colW).size() * 10 + 4;
+        int optionsH = 12 + 4 * ROW + 4 + 12 + 3 * ROW + 24;
+        int contentH = twoCols ? Math.max(designH, optionsH) : designH + 8 + optionsH;
         int ph = Math.min(height - 16, contentH + 54);
         int py = (height - ph) / 2;
         Paper.panel(g, px, py, pw, ph);
@@ -83,11 +88,11 @@ public class SettingsScreen extends Screen {
         g.enableScissor(px + 2, top, px + pw - 2, bottom);
         int y = top - (int) scroll;
         int lx = px + 10;
-        drawThemes(g, mx, my, lx, y, colW, top, bottom);
+        drawDesign(g, mx, my, lx, y, colW, top, bottom);
         if (twoCols) {
             drawOptions(g, mx, my, lx + colW + 10, y, colW, top, bottom);
         } else {
-            drawOptions(g, mx, my, lx, y + themesH + 8, colW, top, bottom);
+            drawOptions(g, mx, my, lx, y + designH + 8, colW, top, bottom);
         }
         g.disableScissor();
         if (maxScroll > 0) {
@@ -103,13 +108,101 @@ public class SettingsScreen extends Screen {
         int by = py + ph - 22;
         boolean hd = Paper.inside(mx, my, bx, by, bw, 16);
         Paper.iconTextButton(g, font, Paper.tool("check"), T.tr("button.done"), bx, by, bw, 16, hd, true);
-        hit(bx, by, bw, 16, this::onClose);
+        hit(bx, by, bw, 16, this::done);
 
         if (tooltip != null) {
             g.renderTooltip(font, tooltip, mx, my);
         }
+        if (themePopup) {
+            drawThemePopup(g, mx, my);
+        }
     }
 
+    private void drawDesign(GuiGraphics g, int mx, int my, int x, int y, int w, int top, int bottom) {
+        section(g, T.s("settings.design"), x, y, w);
+        y += 12;
+        y = option(g, mx, my, x, y, w, top, bottom, T.tr("settings.choose_design"),
+                () -> themePopup = true);
+        int deathY = y;
+        y = option(g, mx, my, x, y, w, top, bottom,
+                T.tr("settings.death_markers", deathLabel(pendingDeathMarkers)),
+                () -> pendingDeathMarkers = (pendingDeathMarkers + 1) % 5);
+        if (Paper.inside(mx, my, x, deathY, w, 16) && my >= top && my < bottom) {
+            tooltip = T.tr("settings.death_markers_tip");
+        }
+        for (FormattedCharSequence l : font.split(T.tr("settings.death_markers_note"), w)) {
+            g.drawString(font, l, x, y + 1, Paper.HINT, false);
+            y += 10;
+        }
+    }
+    private void drawThemePopup(GuiGraphics g, int mx, int my) {
+
+        g.fill(0, 0, width, height, Paper.DIM);
+        int pw = Math.min(width - 16, 430);
+        int rows = (Theme.ALL.size() + 1) / 2;
+        int ph = Math.min(height - 16, 12 + rows * (TILE_H + 4) + 40);
+        int px = (width - pw) / 2;
+        int py = (height - ph) / 2;
+        Paper.panel(g, px, py, pw, ph);
+        Paper.title(g, font, T.s("settings.choose_design"), px + pw / 2, py + 8);
+        boolean hc = Paper.inside(mx, my, px + pw - 18, py + 5, 13, 13);
+        Paper.iconButton(g, Paper.tool("close"), px + pw - 18, py + 5, 13, hc, false);
+        popupHit(px + pw - 18, py + 5, 13, 13, () -> themePopup = false);
+
+        int x = px + 10;
+        int w = pw - 20;
+        int tw = (w - 4) / 2;
+        int top = py + 24;
+        for (int i = 0; i < Theme.ALL.size(); i++) {
+            Theme t = Theme.ALL.get(i);
+            int tx = x + (i % 2) * (tw + 4);
+            int ty = top + (i / 2) * (TILE_H + 4);
+            boolean cur = t == Paper.theme();
+            boolean hover = Paper.inside(mx, my, tx, ty, tw, TILE_H);
+            g.fill(tx + 1, ty + 1, tx + tw + 1, ty + TILE_H + 1, Paper.SHADOW);
+            Paper.tiled(g, t.panel(), tx, ty, tw, TILE_H, tx * 3, ty * 7);
+            Paper.tiled(g, t.panelDark(), tx + 4, ty + TILE_H - 14, 26, 10, tx, ty);
+            Paper.outline(g, tx + 4, ty + TILE_H - 14, 26, 10, t.ink());
+            g.fill(tx + 34, ty + TILE_H - 10, tx + tw - 6, ty + TILE_H - 8, t.accent());
+            String name = font.plainSubstrByWidth(T.s("theme." + t.id()), tw - 10);
+            g.drawString(font, name, tx + 5, ty + 5, t.ink(), false);
+            if (cur) {
+                Paper.outline(g, tx - 1, ty - 1, tw + 2, TILE_H + 2, Paper.GOLD);
+                Paper.outline(g, tx, ty, tw, TILE_H, Paper.GOLD_LIGHT);
+                Paper.icon(g, Paper.tool("check"), tx + tw - 15, ty + 3, 12);
+            } else {
+                Paper.outline(g, tx, ty, tw, TILE_H, hover ? Paper.GOLD : Paper.a(Paper.INK, 0x80));
+            }
+            popupHit(tx, ty, tw, TILE_H, () -> {
+                cfg.theme = t.id();
+                Paper.apply(t);
+                cfg.save();
+                themePopup = false;
+            });
+        }
+    }
+    private void done() {
+        if (pendingDeathMarkers != cfg.deathMarkers) {
+            cfg.deathMarkers = pendingDeathMarkers;
+            cfg.deathMarkersCreated = 0;
+        }
+        cfg.save();
+        minecraft.setScreen(parent);
+    }
+
+    private Component deathLabel(int value) {
+        return T.tr(switch (value) {
+            case 0 -> "death.off";
+            case 1 -> "death.one";
+            case 2 -> "death.five";
+            case 3 -> "death.ten";
+            default -> "death.infinite";
+        });
+    }
+
+    private void popupHit(int x, int y, int w, int h, Runnable action) {
+        popupHits.add(new Hit(x, y, w, h, action));
+    }
     private void drawThemes(GuiGraphics g, int mx, int my, int x, int y, int w, int top, int bottom) {
         section(g, T.s("settings.design"), x, y, w);
         y += 12;
@@ -151,8 +244,9 @@ public class SettingsScreen extends Screen {
                 T.tr("settings.size", cfg.minimapSize()), () -> cfg.minimapSizeIndex = (cfg.minimapSizeIndex + 1) % ModConfig.MINIMAP_SIZES.length,
                 T.tr("settings.zoom", fmtZoom(cfg.minimapZoom())), () -> cfg.minimapZoomIndex = (cfg.minimapZoomIndex + 1) % ModConfig.MINIMAP_ZOOMS.length);
         y = option(g, mx, my, x, y, w, top, bottom, T.tr("settings.corner", T.tr(corners[cfg.minimapCorner])), () -> cfg.minimapCorner = (cfg.minimapCorner + 1) % 4);
-        y = option(g, mx, my, x, y, w, top, bottom, T.tr("settings.coords", onOff(cfg.minimapCoords)), () -> cfg.minimapCoords = !cfg.minimapCoords);
-        y = option(g, mx, my, x, y, w, top, bottom, T.tr("settings.mm_markers", onOff(cfg.minimapMarkers)), () -> cfg.minimapMarkers = !cfg.minimapMarkers);
+        y = optionPair(g, mx, my, x, y, w, top, bottom,
+                T.tr("settings.coords", onOff(cfg.minimapCoords)), () -> cfg.minimapCoords = !cfg.minimapCoords,
+                T.tr("settings.mm_markers", onOff(cfg.minimapMarkers)), () -> cfg.minimapMarkers = !cfg.minimapMarkers);
         y += 4;
         section(g, T.s("settings.markers_section"), x, y, w);
         y += 12;
@@ -206,6 +300,17 @@ public class SettingsScreen extends Screen {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (themePopup) {
+            for (int i = popupHits.size() - 1; i >= 0; i--) {
+                Hit h = popupHits.get(i);
+                if (Paper.inside(mouseX, mouseY, h.x, h.y, h.w, h.h)) {
+                    h.action.run();
+                    Paper.click();
+                    return true;
+                }
+            }
+            return true;
+        }
         for (int i = hits.size() - 1; i >= 0; i--) {
             Hit h = hits.get(i);
             if (Paper.inside(mouseX, mouseY, h.x, h.y, h.w, h.h)) {
@@ -219,6 +324,9 @@ public class SettingsScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mx, double my, double sx, double sy) {
+        if (themePopup) {
+            return true;
+        }
         scroll -= sy * ROW;
         return true;
     }
@@ -226,7 +334,11 @@ public class SettingsScreen extends Screen {
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         if (keyCode == InputConstants.KEY_ESCAPE) {
-            onClose();
+            if (themePopup) {
+                themePopup = false;
+            } else {
+                onClose();
+            }
             return true;
         }
         return super.keyPressed(keyCode, scanCode, modifiers);
