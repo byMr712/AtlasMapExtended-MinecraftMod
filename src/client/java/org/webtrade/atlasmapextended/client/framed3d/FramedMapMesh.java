@@ -59,10 +59,12 @@ public final class FramedMapMesh {
             int c = lineColors[line];
             consumer.addVertex(matrix, linePositions[o], linePositions[o + 1], linePositions[o + 2])
                     .setColor(c)
-                    .setNormal(0.0f, 1.0f, 0.0f);
+                    .setNormal(0.0f, 1.0f, 0.0f)
+                    .setLineWidth(2.0f);
             consumer.addVertex(matrix, linePositions[o + 3], linePositions[o + 4], linePositions[o + 5])
                     .setColor(c)
-                    .setNormal(0.0f, 1.0f, 0.0f);
+                    .setNormal(0.0f, 1.0f, 0.0f)
+                    .setLineWidth(2.0f);
         }
     }
 
