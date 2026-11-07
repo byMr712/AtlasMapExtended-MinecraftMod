@@ -23,8 +23,10 @@ public class GuiMixin {
 
     @Inject(method = "<init>", at = @At("TAIL"))
     private void atlasmapextended$addMinimapLayer(CallbackInfo ci) {
-        // Appended after every vanilla layer (including the scoreboard), so it draws on top of it.
-        this.layers.add((GuiGraphics g, DeltaTracker delta) -> MinimapFrame.draw(g, delta));
+        // On Fabric the HUD is drawn from a layer list, so append after the scoreboard layer.
+        if (MinimapFrame.useLayer()) {
+            this.layers.add((GuiGraphics g, DeltaTracker delta) -> MinimapFrame.draw(g, delta));
+        }
     }
 
     @Inject(method = "render", at = @At("HEAD"))
