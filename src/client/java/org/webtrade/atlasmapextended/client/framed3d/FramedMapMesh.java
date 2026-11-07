@@ -36,7 +36,7 @@ public final class FramedMapMesh {
         return voxelIcons;
     }
 
-    public void emit(Matrix4fc matrix, VertexConsumer consumer, float brightness) {
+    public void emit(Matrix4fc matrix, VertexConsumer consumer, float brightness, int light) {
         for (int quad = 0; quad < count; quad++) {
             int p = quad * 12;
             int color = brighten(colors[quad], brightness);
@@ -45,7 +45,7 @@ public final class FramedMapMesh {
                 consumer.addVertex(matrix, positions[o], positions[o + 1], positions[o + 2])
                         .setColor(color)
                         .setUv(0.0f, 0.0f)
-                        .setLight(15728880)
+                        .setLight(light)
                         .setOverlay(OverlayTexture.NO_OVERLAY)
                         .setNormal(0.0f, 0.0f, 1.0f);
             }

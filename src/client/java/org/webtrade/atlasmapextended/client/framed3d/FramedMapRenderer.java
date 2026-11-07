@@ -49,10 +49,12 @@ public final class FramedMapRenderer {
         long gameTime = level.getGameTime();
         float meshBrightness = state.isGlowFrame ? GLOW_MESH_BRIGHTNESS : 1.0f;
         float iconBrightness = state.isGlowFrame ? GLOW_ICON_BRIGHTNESS : 1.0f;
+        // A normal frame is lit by the room; a glowing frame is self-lit.
+        int light = state.isGlowFrame ? 15728880 : state.lightCoords;
         pose.pushPose();
         pose.scale(1.0f, 1.0f, -1.0f);
         collector.submitCustomGeometry(pose, RenderTypes.entityCutout(WHITE),
-                (p, consumer) -> mesh.emit(p.pose(), consumer, meshBrightness));
+                (p, consumer) -> mesh.emit(p.pose(), consumer, meshBrightness, light));
         if (mesh.lineCount() > 0) {
             collector.submitCustomGeometry(pose, RenderTypes.lines(),
                     (p, consumer) -> mesh.emitLines(p.pose(), consumer, meshBrightness));
@@ -78,7 +80,7 @@ public final class FramedMapRenderer {
                     }
                     matrix.scale(ICON_SCALE, ICON_SCALE, ICON_SCALE)
                             .translate(-8.0f, -16.0f, -shape.depth / 2.0f);
-                    shape.emit(matrix, consumer, iconBrightness);
+                    shape.emit(matrix, consumer, iconBrightness, light);
                 }
             });
         }
