@@ -7,6 +7,7 @@ import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.entity.state.ItemFrameRenderState;
 import net.minecraft.client.renderer.rendertype.RenderTypes;
 import net.minecraft.world.level.saveddata.maps.MapItemSavedData;
+import org.joml.Matrix4f;
 import org.webtrade.atlasmapextended.client.data.ModConfig;
 
 /**
@@ -50,10 +51,22 @@ public final class FramedMapRenderer {
         }
         long gameTime = level.getGameTime();
         float angle = (gameTime % 3600L) * 0.02f;
-        for (FramedMapMesh.IconGroup group : mesh.iconGroups()) {
-            org.webtrade.atlasmapextended.client.gui.Paper.ensureFrom(group.texture, group.source);
-            collector.submitCustomGeometry(pose, RenderTypes.entityCutout(group.texture),
-                    (p, consumer) -> group.emit(p.pose(), consumer, angle));
+        if (!mesh.voxelIcons().isEmpty()) {
+            collector.submitCustomGeometry(pose, RenderTypes.debugQuads(), (p, consumer) -> {
+                Matrix4f base = p.pose();
+                for (FramedMapMesh.VoxelIcon icon : mesh.voxelIcons()) {
+                    IconVoxelShapes.Shape shape = IconVoxelShapes.get(icon.icon(), icon.tint());
+                    if (shape == null) {
+                        continue;
+                    }
+                    Matrix4f matrix = new Matrix4f(base)
+                            .translate(icon.x(), icon.y(), icon.z())
+                            .rotateY(angle)
+                            .scale(0.5f, 0.5f, 0.5f)
+                            .translate(-8.0f, -8.0f, -shape.depth / 2.0f);
+                    shape.emit(matrix, consumer);
+                }
+            });
         }
     }
 }

@@ -50,17 +50,6 @@ public final class FramedMapMesher {
         }
     }
 
-    private static final class IconBuilder {
-        final net.minecraft.resources.Identifier texture;
-        final net.minecraft.resources.Identifier source;
-        final List<FramedMapMesh.IconInstance> instances = new ArrayList<>();
-
-        IconBuilder(net.minecraft.resources.Identifier texture, net.minecraft.resources.Identifier source) {
-            this.texture = texture;
-            this.source = source;
-        }
-    }
-
     public static FramedMapMesh build(FramedMapVolume volume, FramedMapKey key, int startY,
                                       FramedMapOverlay overlay) {
         float[] depth = new float[FramedMapVolume.COLUMNS];
@@ -90,7 +79,7 @@ public final class FramedMapMesher {
 
         List<Quad> quads = new ArrayList<>();
         List<Line> lines = new ArrayList<>();
-        Map<String, IconBuilder> icons = new LinkedHashMap<>();
+        List<FramedMapMesh.VoxelIcon> icons = new ArrayList<>();
 
         // top faces, merged horizontally while colour and depth match
         for (int pz = 0; pz < FramedMapVolume.SIZE; pz++) {
@@ -185,7 +174,7 @@ public final class FramedMapMesher {
 
     private static void addOverlay(FramedMapVolume volume, FramedMapKey key, int startY,
                                    float[] depth, List<Quad> quads, List<Line> lines,
-                                   Map<String, IconBuilder> icons,
+                                   List<FramedMapMesh.VoxelIcon> icons,
                                    FramedMapOverlay overlay, int scaleFactor) {
         for (Marker marker : overlay.markers) {
             int px = pixelX(overlay, scaleFactor, marker.x);
@@ -205,16 +194,7 @@ public final class FramedMapMesher {
             }
 
             String iconName = marker.icon == null || marker.icon.isBlank() ? "pin" : marker.icon;
-            boolean tinted = marker.color != 0;
-            net.minecraft.resources.Identifier texture = Paper.id(
-                    "textures/gui/markers_world/" + (tinted ? "tint/" : "") + iconName + ".png");
-            net.minecraft.resources.Identifier source = tinted
-                    ? Paper.id("textures/gui/markers_tint/" + iconName + ".png")
-                    : Paper.marker(iconName);
-            IconBuilder builder = icons.computeIfAbsent(texture.toString(),
-                    ignored -> new IconBuilder(texture, source));
-
-            builder.instances.add(new FramedMapMesh.IconInstance(px, pz, z, color, 4.0f));
+            icons.add(new FramedMapMesh.VoxelIcon(iconName, marker.color, px, pz, z));
         }
 
         for (Region region : overlay.regions) {
@@ -270,7 +250,8 @@ public final class FramedMapMesher {
         return (int) Math.round(64.0 + (worldZ - overlay.centerZ) / scaleFactor);
     }
 
-    private static FramedMapMesh finish(List<Quad> quads, List<Line> lines, Map<String, IconBuilder> icons) {
+    private static FramedMapMesh finish(List<Quad> quads, List<Line> lines,
+                                        List<FramedMapMesh.VoxelIcon> icons) {
         float[] positions = new float[quads.size() * 12];
         int[] colors = new int[quads.size()];
         for (int i = 0; i < quads.size(); i++) {
@@ -285,14 +266,7 @@ public final class FramedMapMesher {
             System.arraycopy(line.p, 0, linePositions, i * 6, 6);
             lineColors[i] = line.color;
         }
-        List<FramedMapMesh.IconGroup> groups = new ArrayList<>();
-        for (IconBuilder builder : icons.values()) {
-            if (builder.instances.isEmpty()) {
-                continue;
-            }
-            groups.add(new FramedMapMesh.IconGroup(builder.texture, builder.source, builder.instances));
-        }
-        return new FramedMapMesh(positions, colors, quads.size(), linePositions, lineColors, lines.size(), groups);
+        return new FramedMapMesh(positions, colors, quads.size(), linePositions, lineColors, lines.size(), icons);
     }
 
     private static int neighbourHeight(FramedMapVolume volume, int px, int pz, int fallback) {
