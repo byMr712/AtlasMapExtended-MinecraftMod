@@ -29,13 +29,15 @@ public class ModConfig {
     public boolean markerLabels = true;
 
     private static ModConfig instance;
+    private static boolean firstRunGuiScalePending;
 
     public static ModConfig get() {
         if (instance == null) {
             ModConfig fallback = new ModConfig();
             fallback.minimapSizesVersion = 1;
-            fallback.minimapSizeIndex = defaultSizeIndexForGuiScale();
+            boolean existed = java.nio.file.Files.isRegularFile(file());
             instance = Storage.readJson(file(), ModConfig.class, fallback);
+            firstRunGuiScalePending = !existed;
             if (instance.minimapSizesVersion == 0) {
                 // Old config: the first four slots used to be 80/110/140/170.
                 instance.minimapSizeIndex = Math.min(MINIMAP_SIZES.length - 1, instance.minimapSizeIndex + 3);
@@ -47,20 +49,25 @@ public class ModConfig {
         return instance;
     }
 
-    /** First-run default: 230 px at GUI scale 1, 110 px at 2, 80 px at 3, 60 px otherwise. */
-    private static int defaultSizeIndexForGuiScale() {
+    /** Resolves the first-run minimap size once the window really has its final GUI scale. */
+    public static void resolveFirstRunGuiScale() {
+        ModConfig cfg = get();
+        if (!firstRunGuiScalePending) {
+            return;
+        }
+        firstRunGuiScalePending = false;
         int scale = -1;
         try {
             Minecraft mc = Minecraft.getInstance();
             if (mc != null && mc.options != null) {
-                // calculateScale also resolves "auto" (0) to the real GUI scale.
                 scale = mc.getWindow().calculateScale(
                         mc.options.guiScale().get(),
                         mc.options.forceUnicodeFont().get());
             }
         } catch (Throwable ignored) {
         }
-        return scale == 1 ? 8 : scale == 2 ? 4 : scale == 3 ? 3 : 2;
+        cfg.minimapSizeIndex = scale == 1 ? 8 : scale == 2 ? 4 : scale == 3 ? 3 : 2;
+        cfg.save();
     }
     private static Path file() {
         return Minecraft.getInstance().gameDirectory.toPath().resolve("config").resolve("atlasmapextended.json");
