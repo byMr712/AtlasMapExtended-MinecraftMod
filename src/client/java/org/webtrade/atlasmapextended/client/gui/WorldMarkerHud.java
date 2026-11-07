@@ -98,6 +98,7 @@ public final class WorldMarkerHud {
         double hoverDistance = Double.MAX_VALUE;
         int hoverX = 0;
         int hoverY = 0;
+        double hoveredDist = 0;
         for (Marker m : session.markers) {
             if (m.hidden || !m.dim.equals(dim)) {
                 continue;
@@ -156,10 +157,11 @@ public final class WorldMarkerHud {
                 hovered = m;
                 hoverX = sx;
                 hoverY = sy;
+                hoveredDist = dist;
             }
         }
         if (hovered != null) {
-            drawName(g, mc.font, hovered, hoverX, hoverY, sw, sh);
+            drawName(g, mc.font, hovered, hoveredDist, hoverX, hoverY, sw, sh);
         }
         visibleLastFrame = drawn > 0;
         releaseUnused(now);
@@ -182,20 +184,22 @@ public final class WorldMarkerHud {
         return entry;
     }
 
-    private static void drawName(GuiGraphicsExtractor g, Font font, Marker m, int sx, int sy, int sw, int sh) {
+    private static void drawName(GuiGraphicsExtractor g, Font font, Marker m, double distance, int sx, int sy, int sw, int sh) {
         String name = m.name == null || m.name.isBlank() ? T.s("marker.unnamed") : m.name;
         name = font.plainSubstrByWidth(name, Math.min(180, sw - 12));
-        int tw = font.width(name);
+        String dist = T.s("marker.distance", Math.round(distance));
+        int tw = Math.max(font.width(name), font.width(dist));
         int tx = Math.max(4, Math.min(sw - tw - 4, sx - tw / 2));
         int ty = sy + ICON_SIZE / 2 + 4;
-        if (ty + 12 > sh - 4) {
-            ty = sy - ICON_SIZE / 2 - 16;
+        if (ty + 21 > sh - 4) {
+            ty = sy - ICON_SIZE / 2 - 23;
         }
-        g.fill(tx - 4, ty - 2, tx + tw + 4, ty + 10, Paper.a(Paper.CREAM, 0xE8));
-        g.outline(tx - 4, ty - 2, tw + 8, 12, Paper.a(Paper.INK, 0xA0));
+        ty = Math.max(4, ty);
+        g.fill(tx - 4, ty - 2, tx + tw + 4, ty + 19, Paper.a(Paper.CREAM, 0xE8));
+        g.outline(tx - 4, ty - 2, tw + 8, 21, Paper.a(Paper.INK, 0xA0));
         g.text(font, name, tx, ty, Paper.INK, false);
+        g.text(font, dist, tx, ty + 10, Paper.a(Paper.INK, 0xB0), false);
     }
-
     /** Frees icon textures that have been out of view for a while, so they load again on return. */
     private static void releaseUnused(long now) {
         Iterator<Map.Entry<String, IconEntry>> it = ICONS.entrySet().iterator();
