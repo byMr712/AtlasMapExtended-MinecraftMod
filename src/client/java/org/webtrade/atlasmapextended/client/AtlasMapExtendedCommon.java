@@ -2,6 +2,7 @@ package org.webtrade.atlasmapextended.client;
 
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.Screenshot;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.events.GuiEventListener;
@@ -9,6 +10,8 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.player.LocalPlayer;
 import org.webtrade.atlasmapextended.client.data.Marker;
 import org.webtrade.atlasmapextended.client.data.ModConfig;
+import org.webtrade.atlasmapextended.client.data.Storage;
+import org.webtrade.atlasmapextended.client.gui.ImageCache;
 import org.webtrade.atlasmapextended.client.gui.MapScreen;
 import org.webtrade.atlasmapextended.client.gui.MinimapHud;
 import org.webtrade.atlasmapextended.client.gui.Paper;
@@ -23,7 +26,11 @@ import org.webtrade.atlasmapextended.client.map.MapSession;
 import org.webtrade.atlasmapextended.mixin.client.ScreenAccessor;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.stream.Stream;
 
 /**
  * Loader-agnostic client logic. Both the Fabric entrypoint and the NeoForge entrypoint
@@ -35,6 +42,10 @@ public final class AtlasMapExtendedCommon {
     private static final MinimapHud MINIMAP = new MinimapHud();
     private static boolean themeLoaded;
     private static boolean deathMarkerHandled;
+    private static Marker pendingShotMarker;
+    private static MapSession pendingShotSession;
+    private static long pendingShotBefore;
+    private static int pendingShotTicks;
 
     private AtlasMapExtendedCommon() {
     }
@@ -48,6 +59,7 @@ public final class AtlasMapExtendedCommon {
         loadTheme();
         MapManager.tick(mc);
         tickDeathMarker(mc);
+        tickPendingDeathScreenshot(mc);
         RegionToast.tick();
         if (ModKeys.OPEN_MAP == null) {
             return;
@@ -138,8 +150,70 @@ public final class AtlasMapExtendedCommon {
         m.created = System.currentTimeMillis();
         session.markers.add(m);
         session.saveMarkers();
+        captureDeathScreenshot(mc, session, m);
         cfg.deathMarkersCreated++;
         cfg.save();
+    }
+    /** Asks vanilla for a screenshot of the death spot and attaches it to the death marker. */
+    private static void captureDeathScreenshot(Minecraft mc, MapSession session, Marker marker) {
+        pendingShotMarker = marker;
+        pendingShotSession = session;
+        pendingShotBefore = newestScreenshot(mc.gameDirectory.toPath().resolve("screenshots"));
+        pendingShotTicks = 60;
+        try {
+            Screenshot.grab(mc, false);
+        } catch (Throwable t) {
+            Storage.LOG.warn("Failed to capture the death screenshot", t);
+        }
+    }
+
+    private static void tickPendingDeathScreenshot(Minecraft mc) {
+        if (pendingShotMarker == null) {
+            return;
+        }
+        if (pendingShotTicks-- <= 0) {
+            pendingShotMarker = null;
+            pendingShotSession = null;
+            return;
+        }
+        Path dir = mc.gameDirectory.toPath().resolve("screenshots");
+        Path shot = newestScreenshotAfter(dir, pendingShotBefore);
+        if (shot == null) {
+            return;
+        }
+        Marker marker = pendingShotMarker;
+        MapSession session = pendingShotSession;
+        pendingShotMarker = null;
+        pendingShotSession = null;
+        if (session == null) {
+            return;
+        }
+        ImageCache.importImage(shot, session.screenshotsDir()).thenAcceptAsync(name -> {
+            if (name != null) {
+                marker.screenshots.add(name);
+                session.saveMarkers();
+            }
+        }, mc);
+    }
+    private static long newestScreenshot(Path dir) {
+        try (Stream<Path> files = Files.list(dir)) {
+            return files.filter(p -> p.getFileName().toString().endsWith(".png"))
+                    .mapToLong(p -> p.toFile().lastModified())
+                    .max().orElse(0L);
+        } catch (Exception e) {
+            return 0L;
+        }
+    }
+
+    private static Path newestScreenshotAfter(Path dir, long after) {
+        try (Stream<Path> files = Files.list(dir)) {
+            return files.filter(p -> p.getFileName().toString().endsWith(".png"))
+                    .filter(p -> p.toFile().lastModified() >= after)
+                    .max(Comparator.comparingLong(p -> p.toFile().lastModified()))
+                    .orElse(null);
+        } catch (Exception e) {
+            return null;
+        }
     }
     /** Applies the saved UI design once the game directory (and so the config) is available. */
     public static void loadTheme() {
