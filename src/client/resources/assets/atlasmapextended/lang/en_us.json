@@ -39,7 +39,7 @@
   "atlasmapextended.marker.no_desc": "— no description —",
   "atlasmapextended.marker.no_shots": "No screenshots",
   "atlasmapextended.marker.default_name": "Marker %s",
-    "atlasmapextended.marker.distance": "[%s m]",
+  "atlasmapextended.marker.distance": "[%s m]",
   "atlasmapextended.unit.blocks": "blocks",
   "atlasmapextended.unit.blocks_short": "b",
   "atlasmapextended.ruler.total": "Length: %s blocks · points: %s",
@@ -289,5 +289,16 @@
   "atlasmapextended.icon.cauldron": "Cauldron",
   "atlasmapextended.icon.compass": "Compass",
   "atlasmapextended.icon.bucket": "Bucket",
-  "atlasmapextended.icon.cake": "Cake"
+  "atlasmapextended.icon.cake": "Cake",
+  "atlasmapextended.marker.death": "Death",
+  "atlasmapextended.marker.death_desc": "Died at %s, %s, %s",
+  "atlasmapextended.settings.choose_design": "Choose design",
+  "atlasmapextended.settings.death_markers": "Death markers: %s",
+  "atlasmapextended.settings.death_markers_note": "Only new deaths are counted. Existing death markers are never deleted; after changing the limit, counting starts from zero.",
+  "atlasmapextended.settings.death_markers_tip": "How many death markers to create: off, 1, 5, 10 or unlimited. Changing this never deletes existing markers - only new deaths are counted, from zero.",
+  "atlasmapextended.death.off": "Off",
+  "atlasmapextended.death.one": "1",
+  "atlasmapextended.death.five": "5",
+  "atlasmapextended.death.ten": "10",
+  "atlasmapextended.death.infinite": "Unlimited"
 }
