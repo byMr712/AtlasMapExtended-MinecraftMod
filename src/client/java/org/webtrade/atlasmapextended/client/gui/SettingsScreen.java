@@ -7,7 +7,10 @@ import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.FormattedCharSequence;
+import org.webtrade.atlasmapextended.client.data.Marker;
 import org.webtrade.atlasmapextended.client.data.ModConfig;
+import org.webtrade.atlasmapextended.client.map.MapManager;
+import org.webtrade.atlasmapextended.client.map.MapSession;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -38,8 +41,7 @@ public class SettingsScreen extends Screen {
 
     @Override
     public void onClose() {
-        cfg.save();
-        minecraft.setScreen(parent);
+        done();
     }
 
     @Override
@@ -185,11 +187,38 @@ public class SettingsScreen extends Screen {
     }
     private void done() {
         if (pendingDeathMarkers != cfg.deathMarkers) {
+            int oldMax = deathMarkerMax(cfg.deathMarkers);
+            int newMax = deathMarkerMax(pendingDeathMarkers);
+            int existing = 0;
+            MapSession session = MapManager.live();
+            if (session != null) {
+                for (Marker m : session.markers) {
+                    if (m.death) {
+                        existing++;
+                    }
+                }
+            }
+            if (pendingDeathMarkers == 4) {
+                cfg.deathMarkersCreated = 0;
+            } else if (newMax > oldMax) {
+                cfg.deathMarkersCreated = Math.min(existing, oldMax);
+            } else {
+                cfg.deathMarkersCreated = 0;
+            }
             cfg.deathMarkers = pendingDeathMarkers;
-            cfg.deathMarkersCreated = 0;
         }
         cfg.save();
         minecraft.setScreen(parent);
+    }
+
+    private static int deathMarkerMax(int limit) {
+        return switch (limit) {
+            case 1 -> 1;
+            case 2 -> 5;
+            case 3 -> 10;
+            case 4 -> Integer.MAX_VALUE;
+            default -> 0;
+        };
     }
 
     private Component deathLabel(int value) {
