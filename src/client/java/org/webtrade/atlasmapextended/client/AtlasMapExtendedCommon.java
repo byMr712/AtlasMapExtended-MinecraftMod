@@ -127,6 +127,7 @@ public final class AtlasMapExtendedCommon {
         }
         Marker m = new Marker();
         m.icon = "skull";
+        m.death = true;
         m.color = 0xFFC62828;
         m.name = T.s("marker.death");
         m.description = T.s("marker.death_desc", p.getBlockX(), p.getBlockY(), p.getBlockZ());
