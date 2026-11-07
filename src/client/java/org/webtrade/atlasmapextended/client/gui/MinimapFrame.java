@@ -5,12 +5,9 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import org.webtrade.atlasmapextended.client.AtlasMapExtendedCommon;
 
-/** Draws the minimap last, so it covers the scoreboard and stays under screens. */
+/** Draws the minimap above the scoreboard, and behind any open screen. */
 public final class MinimapFrame {
     private static final boolean FABRIC = hasClass("net.fabricmc.loader.api.FabricLoader");
-    private static boolean drawnThisFrame;
-    private static GuiGraphics pendingGraphics;
-    private static DeltaTracker pendingDelta;
 
     private MinimapFrame() {
     }
@@ -24,32 +21,18 @@ public final class MinimapFrame {
         }
     }
 
-    /** Fabric builds the HUD from a layer list; NeoForge draws at the end of the whole frame. */
+    /** Fabric builds the HUD from a layer list; NeoForge needs an extra draw after the HUD. */
     public static boolean useLayer() {
         return FABRIC;
     }
 
-    public static void beginFrame() {
-        drawnThisFrame = false;
-        pendingGraphics = null;
-        pendingDelta = null;
-    }
-
-    public static void remember(GuiGraphics g, DeltaTracker delta) {
-        pendingGraphics = g;
-        pendingDelta = delta;
-    }
-
+    /** HUD pass: below open screens. */
     public static void draw(GuiGraphics g, DeltaTracker delta) {
-        if (drawnThisFrame) {
-            return;
-        }
-        drawnThisFrame = true;
         if (g == null || delta == null) {
             return;
         }
         Minecraft mc = Minecraft.getInstance();
-        if (mc.screen != null || mc.level == null || mc.options.hideGui) {
+        if (mc.level == null || mc.options.hideGui) {
             return;
         }
         g.flush();
@@ -57,10 +40,11 @@ public final class MinimapFrame {
         g.flush();
     }
 
-    public static void drawLate() {
-        if (drawnThisFrame || pendingGraphics == null || pendingDelta == null) {
+    /** Late pass: only while no screen is open, so it can sit above the scoreboard. */
+    public static void drawAboveHud(GuiGraphics g, DeltaTracker delta) {
+        if (Minecraft.getInstance().screen != null) {
             return;
         }
-        draw(pendingGraphics, pendingDelta);
+        draw(g, delta);
     }
 }
