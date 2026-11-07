@@ -39,6 +39,7 @@
   "atlasmapextended.marker.no_desc": "— описания нет —",
   "atlasmapextended.marker.no_shots": "Скриншотов нет",
   "atlasmapextended.marker.default_name": "Метка %s",
+    "atlasmapextended.marker.distance": "[%s м]",
   "atlasmapextended.unit.blocks": "бл.",
   "atlasmapextended.unit.blocks_short": "бл",
   "atlasmapextended.ruler.total": "Длина: %s бл. · точек: %s",
