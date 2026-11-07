@@ -117,7 +117,7 @@ public final class FramedMapMesher {
             for (int px = 0; px < FramedMapVolume.SIZE; px++) {
                 int index = pz * FramedMapVolume.SIZE + px;
                 float d = depth[index];
-                if (d <= 0 || volume.water[index]) {
+                if (d <= 0) {
                     continue;
                 }
                 int wx = key.originX() + px * scaleFactor;
