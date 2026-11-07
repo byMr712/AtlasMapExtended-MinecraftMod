@@ -34,6 +34,7 @@ public class ModConfig {
         if (instance == null) {
             ModConfig fallback = new ModConfig();
             fallback.minimapSizesVersion = 1;
+            fallback.minimapSizeIndex = defaultSizeIndexForGuiScale();
             instance = Storage.readJson(file(), ModConfig.class, fallback);
             if (instance.minimapSizesVersion == 0) {
                 // Old config: the first four slots used to be 80/110/140/170.
@@ -46,6 +47,18 @@ public class ModConfig {
         return instance;
     }
 
+    /** First-run default: 110 px at GUI scale 2, 60 px at GUI scale 3. */
+    private static int defaultSizeIndexForGuiScale() {
+        int scale = 3;
+        try {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc != null && mc.options != null) {
+                scale = mc.options.guiScale().get();
+            }
+        } catch (Throwable ignored) {
+        }
+        return scale == 2 ? 4 : 2;
+    }
     private static Path file() {
         return Minecraft.getInstance().gameDirectory.toPath().resolve("config").resolve("atlasmapextended.json");
     }
