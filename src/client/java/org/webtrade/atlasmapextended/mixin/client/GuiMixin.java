@@ -40,4 +40,9 @@ public class GuiMixin {
         MinimapFrame.remember(g, delta);
     }
 
+    @Inject(method = "renderSavingIndicator", at = @At("TAIL"))
+    private void atlasmapextended$renderMinimapLate(GuiGraphics g, DeltaTracker delta, CallbackInfo ci) {
+        MinimapFrame.drawLate();
+    }
+
 }
