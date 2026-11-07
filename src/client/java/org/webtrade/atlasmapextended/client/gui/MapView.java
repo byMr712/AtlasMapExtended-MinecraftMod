@@ -160,6 +160,24 @@ public class MapView {
                     seg(g, p[0], p[1], p[2], p[3], wpx, c);
                 }
             }
+            case Stroke.ARROW -> {
+                if (p.length >= 4) {
+                    seg(g, p[0], p[1], p[2], p[3], wpx, c);
+                    float ax = sx(p[0]);
+                    float ay = sy(p[1]);
+                    float bx = sx(p[2]);
+                    float by = sy(p[3]);
+                    double ang = Math.atan2(by - ay, bx - ax);
+                    double len = Math.max(7.0, wpx * 4.0);
+                    double spread = Math.toRadians(26);
+                    Paper.line(g, bx, by,
+                            (float) (bx - Math.cos(ang - spread) * len),
+                            (float) (by - Math.sin(ang - spread) * len), wpx, c);
+                    Paper.line(g, bx, by,
+                            (float) (bx - Math.cos(ang + spread) * len),
+                            (float) (by - Math.sin(ang + spread) * len), wpx, c);
+                }
+            }
             case Stroke.RECT -> {
                 if (p.length >= 4) {
                     seg(g, p[0], p[1], p[2], p[1], wpx, c);

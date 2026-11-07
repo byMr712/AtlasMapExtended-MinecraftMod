@@ -60,6 +60,7 @@
   "atlasmapextended.tool.close": "Закрыть карту [%s / Esc]",
   "atlasmapextended.draw.pen": "Перо — свободное рисование",
   "atlasmapextended.draw.line": "Прямая линия",
+    "atlasmapextended.draw.arrow_draw": "Стрелка — от начала к острию",
   "atlasmapextended.draw.rect": "Прямоугольник",
   "atlasmapextended.draw.circle": "Круг",
   "atlasmapextended.draw.eraser": "Ластик",
