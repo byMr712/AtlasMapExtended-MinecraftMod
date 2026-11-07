@@ -23,7 +23,6 @@ public class GuiMixin {
 
     @Inject(method = "<init>", at = @At("TAIL"))
     private void atlasmapextended$addMinimapLayer(CallbackInfo ci) {
-        // On Fabric the HUD is drawn from a layer list, so append after the scoreboard layer.
         if (MinimapFrame.useLayer()) {
             this.layers.add((GuiGraphics g, DeltaTracker delta) -> MinimapFrame.draw(g, delta));
         }
@@ -31,21 +30,18 @@ public class GuiMixin {
 
     @Inject(method = "render", at = @At("HEAD"))
     private void atlasmapextended$renderWorldMarkers(GuiGraphics g, DeltaTracker delta, CallbackInfo ci) {
+        MinimapFrame.beginFrame();
         WorldMarkerHud.render(g);
     }
 
     @Inject(method = "render", at = @At("TAIL"))
-    private void atlasmapextended$renderMinimapBehindScreens(GuiGraphics g, DeltaTracker delta, CallbackInfo ci) {
-        if (!MinimapFrame.useLayer()) {
-            MinimapFrame.draw(g, delta);
-        }
+    private void atlasmapextended$rememberMinimapFrame(GuiGraphics g, DeltaTracker delta, CallbackInfo ci) {
+        MinimapFrame.remember(g, delta);
     }
 
     @Inject(method = "renderSavingIndicator", at = @At("TAIL"))
     private void atlasmapextended$renderMinimapAboveHud(GuiGraphics g, DeltaTracker delta, CallbackInfo ci) {
-        if (!MinimapFrame.useLayer()) {
-            MinimapFrame.drawAboveHud(g, delta);
-        }
+        MinimapFrame.drawAboveHud();
     }
 
 }
