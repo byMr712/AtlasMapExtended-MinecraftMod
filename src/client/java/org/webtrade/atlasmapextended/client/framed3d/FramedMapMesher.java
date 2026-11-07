@@ -79,8 +79,6 @@ public final class FramedMapMesher {
         List<Quad> quads = new ArrayList<>();
         List<Line> lines = new ArrayList<>();
         List<FramedMapMesh.VoxelIcon> icons = new ArrayList<>();
-        float minTop = Float.MAX_VALUE;
-        float maxTop = 0.0f;
 
         // top faces, merged horizontally while colour and depth match
         for (int pz = 0; pz < FramedMapVolume.SIZE; pz++) {
@@ -107,10 +105,8 @@ public final class FramedMapMesher {
                         px + run, pz + 1, d,
                         px + run, pz, d,
                         color));
-                minTop = Math.min(minTop, d);
-                maxTop = Math.max(maxTop, d);
                 if (quads.size() >= MAX_QUADS) {
-                    return finish(quads, lines, icons, minTop, maxTop);
+                    return finish(quads, lines, icons);
                 }
                 px += run;
             }
@@ -149,7 +145,7 @@ public final class FramedMapMesher {
                             px, pz, north, d, surfaceColor);
                 }
                 if (quads.size() >= MAX_QUADS) {
-                    return finish(quads, lines, icons, minTop, maxTop);
+                    return finish(quads, lines, icons);
                 }
             }
         }
@@ -157,7 +153,7 @@ public final class FramedMapMesher {
         if (overlay != null) {
             addOverlay(volume, startY, depth, quads, lines, icons, overlay, scaleFactor);
         }
-        return finish(quads, lines, icons, minTop, maxTop);
+        return finish(quads, lines, icons);
     }
 
     private static void addWallEast(List<Quad> quads, FramedMapVolume volume, int index, int scaleFactor,
@@ -295,12 +291,7 @@ public final class FramedMapMesher {
     }
 
     private static FramedMapMesh finish(List<Quad> quads, List<Line> lines,
-                                        List<FramedMapMesh.VoxelIcon> icons,
-                                        float minTop, float maxTop) {
-        if (minTop == Float.MAX_VALUE) {
-            minTop = 0.0f;
-            maxTop = 0.0f;
-        }
+                                        List<FramedMapMesh.VoxelIcon> icons) {
         float[] positions = new float[quads.size() * 12];
         int[] colors = new int[quads.size()];
         for (int i = 0; i < quads.size(); i++) {
@@ -316,7 +307,7 @@ public final class FramedMapMesher {
             lineColors[i] = line.color;
         }
         return new FramedMapMesh(positions, colors, quads.size(), linePositions, lineColors,
-                lines.size(), icons, minTop, maxTop);
+                lines.size(), icons);
     }
 
     private static int neighbourHeight(FramedMapVolume volume, int px, int pz, int fallback) {

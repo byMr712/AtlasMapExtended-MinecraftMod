@@ -15,13 +15,10 @@ public final class FramedMapMesh {
     private final int[] lineColors;
     private final int lineCount;
     private final List<VoxelIcon> voxelIcons;
-    private final float revealMin;
-    private final float revealMax;
-    private long revealStart = -1L;
 
     FramedMapMesh(float[] positions, int[] colors, int count,
                   float[] linePositions, int[] lineColors, int lineCount,
-                  List<VoxelIcon> voxelIcons, float revealMin, float revealMax) {
+                  List<VoxelIcon> voxelIcons) {
         this.positions = positions;
         this.colors = colors;
         this.count = count;
@@ -29,8 +26,6 @@ public final class FramedMapMesh {
         this.lineColors = lineColors;
         this.lineCount = lineCount;
         this.voxelIcons = voxelIcons;
-        this.revealMin = revealMin;
-        this.revealMax = revealMax;
     }
 
     public int lineCount() {
@@ -41,30 +36,9 @@ public final class FramedMapMesh {
         return voxelIcons;
     }
 
-    public float revealMin() {
-        return revealMin;
-    }
-
-    public float revealMax() {
-        return revealMax;
-    }
-
-    /** Client tick at which this mesh first appeared; negative means "already visible". */
-    public long revealStart() {
-        return revealStart;
-    }
-
-    public void setRevealStart(long revealStart) {
-        this.revealStart = revealStart;
-    }
-
-    public void emit(Matrix4fc matrix, VertexConsumer consumer, float maxZ) {
+    public void emit(Matrix4fc matrix, VertexConsumer consumer) {
         for (int quad = 0; quad < count; quad++) {
             int p = quad * 12;
-            if (Math.max(Math.max(positions[p + 2], positions[p + 5]),
-                    Math.max(positions[p + 8], positions[p + 11])) > maxZ) {
-                continue;
-            }
             int color = colors[quad];
             for (int vertex = 0; vertex < 4; vertex++) {
                 int o = p + vertex * 3;
@@ -79,12 +53,9 @@ public final class FramedMapMesh {
     }
 
     /** Two vertices per segment; RenderTypes.lines() consumes pairs. */
-    public void emitLines(Matrix4fc matrix, VertexConsumer consumer, float maxZ) {
+    public void emitLines(Matrix4fc matrix, VertexConsumer consumer) {
         for (int line = 0; line < lineCount; line++) {
             int o = line * 6;
-            if (Math.max(linePositions[o + 2], linePositions[o + 5]) > maxZ) {
-                continue;
-            }
             int c = lineColors[line];
             consumer.addVertex(matrix, linePositions[o], linePositions[o + 1], linePositions[o + 2])
                     .setColor(c)
