@@ -6,6 +6,8 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.events.GuiEventListener;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.player.LocalPlayer;
+import org.webtrade.atlasmapextended.client.data.Marker;
 import org.webtrade.atlasmapextended.client.data.ModConfig;
 import org.webtrade.atlasmapextended.client.gui.MapScreen;
 import org.webtrade.atlasmapextended.client.gui.MinimapHud;
@@ -17,6 +19,7 @@ import org.webtrade.atlasmapextended.client.gui.Theme;
 import org.webtrade.atlasmapextended.client.gui.TitleButton;
 import org.webtrade.atlasmapextended.client.gui.WorldsScreen;
 import org.webtrade.atlasmapextended.client.map.MapManager;
+import org.webtrade.atlasmapextended.client.map.MapSession;
 import org.webtrade.atlasmapextended.mixin.client.ScreenAccessor;
 
 import java.util.ArrayList;
@@ -31,6 +34,7 @@ public final class AtlasMapExtendedCommon {
 
     private static final MinimapHud MINIMAP = new MinimapHud();
     private static boolean themeLoaded;
+    private static boolean deathMarkerHandled;
 
     private AtlasMapExtendedCommon() {
     }
@@ -43,6 +47,7 @@ public final class AtlasMapExtendedCommon {
         ModConfig.tickFirstRunGuiScale();
         loadTheme();
         MapManager.tick(mc);
+        tickDeathMarker(mc);
         RegionToast.tick();
         if (ModKeys.OPEN_MAP == null) {
             return;
@@ -91,6 +96,50 @@ public final class AtlasMapExtendedCommon {
         ModKeys.TOGGLE_DRAWINGS.consumeClick();
     }
 
+    /** Creates a red skull marker on the player's death, honouring the death-marker limit. */
+    private static void tickDeathMarker(Minecraft mc) {
+        LocalPlayer p = mc.player;
+        if (p == null || mc.level == null || !p.isDeadOrDying()) {
+            deathMarkerHandled = false;
+            return;
+        }
+        if (deathMarkerHandled) {
+            return;
+        }
+        deathMarkerHandled = true;
+        ModConfig cfg = ModConfig.get();
+        int limit = cfg.deathMarkers;
+        if (limit == 0) {
+            return;
+        }
+        int max = switch (limit) {
+            case 1 -> 1;
+            case 2 -> 5;
+            case 3 -> 10;
+            default -> Integer.MAX_VALUE;
+        };
+        if (cfg.deathMarkersCreated >= max) {
+            return;
+        }
+        MapSession session = MapManager.live();
+        if (session == null) {
+            return;
+        }
+        Marker m = new Marker();
+        m.icon = "skull";
+        m.color = 0xFFC62828;
+        m.name = T.s("marker.death");
+        m.description = T.s("marker.death_desc", p.getBlockX(), p.getBlockY(), p.getBlockZ());
+        m.dim = mc.level.dimension().identifier().toString();
+        m.x = p.getBlockX();
+        m.y = p.getBlockY();
+        m.z = p.getBlockZ();
+        m.created = System.currentTimeMillis();
+        session.markers.add(m);
+        session.saveMarkers();
+        cfg.deathMarkersCreated++;
+        cfg.save();
+    }
     /** Applies the saved UI design once the game directory (and so the config) is available. */
     public static void loadTheme() {
         if (!themeLoaded) {
