@@ -1,8 +1,7 @@
 package org.webtrade.atlasmapextended.client.framed3d;
 
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
-import net.minecraft.resources.ResourceKey;
-import net.minecraft.world.level.Level;
 import net.minecraft.world.level.saveddata.maps.MapId;
 import net.minecraft.world.level.saveddata.maps.MapItemSavedData;
 import org.webtrade.atlasmapextended.client.data.ModConfig;
@@ -10,72 +9,99 @@ import org.webtrade.atlasmapextended.client.data.ModConfig;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
- * Per-map cache. Sampling is spread over client ticks so a frame never causes
- * a long freeze; the mesh is built once when all explored columns are ready.
+ * Per-map cache. A map is sampled once while its area is loaded, the surface
+ * volume is stored in the world folder and the mesh is built off-thread.
+ * Moving the frame, or viewing the same map in another place, reuses the same
+ * baked result.
  */
 public final class FramedMapCache {
     private static final int COLUMNS_PER_TICK = 512;
-    private static final Map<Integer, Entry> ENTRIES = new HashMap<>();
-    private static ResourceKey<Level> currentDimension;
+    private static final Map<String, Entry> ENTRIES = new HashMap<>();
+    private static final ExecutorService MESH_POOL = Executors.newSingleThreadExecutor(task -> {
+        Thread thread = new Thread(task, "AtlasMap-3D-Mesh");
+        thread.setDaemon(true);
+        return thread;
+    });
 
     private FramedMapCache() {
     }
 
     private static final class Entry {
-        FramedMapKey key;
+        final FramedMapKey key;
+        final String id;
         FramedMapVolume volume = new FramedMapVolume();
         byte[] explored;
         long exploredHash;
         int cursor;
         boolean sampling;
+        boolean building;
+        int buildGeneration = -1;
+        int generation;
         FramedMapMesh mesh;
         long builtHash;
 
         Entry(FramedMapKey key) {
             this.key = key;
+            this.id = key.dimension().identifier() + "#" + key.mapId();
         }
     }
 
     /** Called from the item frame renderer. Returns null until the mesh is ready. */
     public static FramedMapMesh getOrRequest(ClientLevel level, MapId mapId, MapItemSavedData data) {
-        if (!ModConfig.get().framedMaps3D) {
+        if (!ModConfig.get().framedMaps3D || data.colors == null) {
             return null;
         }
-        if (currentDimension != null && !currentDimension.equals(level.dimension())) {
-            clear();
-        }
-        currentDimension = level.dimension();
 
-        int id = mapId.id();
         FramedMapKey key = new FramedMapKey(
-                level.dimension(), id,
+                data.dimension, mapId.id(),
                 data.centerX, data.centerZ, data.scale,
                 level.getMinY(), level.getHeight());
-
+        String id = key.dimension().identifier() + "#" + key.mapId();
         long hash = Arrays.hashCode(data.colors);
+
         Entry entry = ENTRIES.get(id);
-        if (entry == null || !entry.key.sameGeometry(key)) {
+        if (entry == null) {
             entry = new Entry(key);
+            FramedMapVolume stored = FramedMapStorage.load(key);
+            if (stored != null) {
+                entry.volume = stored;
+                entry.exploredHash = hash;
+                entry.builtHash = hash;
+                startBuild(entry);
+                System.out.println("[AtlasMap3D] loaded map " + id);
+            } else {
+                startSampling(entry, data, hash);
+                System.out.println("[AtlasMap3D] start map " + id
+                        + " center=" + data.centerX + "," + data.centerZ + " scale=" + data.scale);
+            }
             ENTRIES.put(id, entry);
+        } else if (!entry.key.sameGeometry(key)) {
+            entry = new Entry(key);
+            startSampling(entry, data, hash);
+            ENTRIES.put(id, entry);
+            System.out.println("[AtlasMap3D] geometry changed map " + id);
         } else if (entry.mesh != null && entry.builtHash != hash) {
-            // the map was explored further or rescaled: rebuild
-            entry = new Entry(key);
-            ENTRIES.put(id, entry);
+            // the map was explored further or rescaled: rebuild once
+            entry.mesh = null;
+            entry.builtHash = 0;
+            startSampling(entry, data, hash);
+            System.out.println("[AtlasMap3D] refresh map " + id);
         }
 
-        if (entry.mesh != null) {
-            return entry.mesh;
-        }
-        if (!entry.sampling) {
-            entry.sampling = true;
-            entry.explored = data.colors.clone();
-            entry.exploredHash = hash;
-            entry.cursor = 0;
-            entry.volume.clear();
-        }
-        return null;
+        return entry.mesh;
+    }
+
+    private static void startSampling(Entry entry, MapItemSavedData data, long hash) {
+        entry.volume.clear();
+        entry.explored = data.colors.clone();
+        entry.exploredHash = hash;
+        entry.cursor = 0;
+        entry.sampling = true;
+        entry.generation++;
     }
 
     /** Called once per client tick. */
@@ -94,15 +120,70 @@ public final class FramedMapCache {
                 FramedMapSampler.sampleColumn(level, entry.volume, entry.key, entry.explored, px, pz);
             }
             if (entry.cursor >= FramedMapVolume.COLUMNS) {
-                entry.mesh = FramedMapMesher.build(entry.volume, entry.key, ModConfig.get().framedMapsStartY);
-                entry.builtHash = entry.exploredHash;
                 entry.sampling = false;
+                FramedMapStorage.save(entry.key, entry.volume);
+                startBuild(entry);
             }
         }
     }
 
+    private static void startBuild(Entry entry) {
+        if (entry.building && entry.buildGeneration == entry.generation) {
+            return;
+        }
+        int minSurface = Integer.MAX_VALUE;
+        int maxSurface = Integer.MIN_VALUE;
+        for (int i = 0; i < FramedMapVolume.COLUMNS; i++) {
+            if (entry.volume.valid[i]) {
+                minSurface = Math.min(minSurface, entry.volume.surfaceY[i]);
+                maxSurface = Math.max(maxSurface, entry.volume.surfaceY[i]);
+            }
+        }
+        int startY = chooseStartY(ModConfig.get().framedMapsStartY, minSurface, maxSurface);
+        entry.building = true;
+        entry.buildGeneration = entry.generation;
+        int generation = entry.generation;
+        FramedMapVolume snapshot = entry.volume.copy();
+        FramedMapKey key = entry.key;
+        long hash = entry.exploredHash;
+        int min = minSurface;
+        int max = maxSurface;
+        MESH_POOL.execute(() -> {
+            FramedMapMesh mesh = FramedMapMesher.build(snapshot, key, startY);
+            Minecraft.getInstance().execute(() -> {
+                Entry current = ENTRIES.get(entry.id);
+                if (current != entry || entry.generation != generation) {
+                    return;
+                }
+                entry.mesh = mesh;
+                entry.builtHash = hash;
+                entry.building = false;
+                System.out.println("[AtlasMap3D] built map " + entry.id + " quads=" + mesh.quadCount()
+                        + " surfaceY=" + min + ".." + max + " startY=" + startY);
+            });
+        });
+    }
+
+    /**
+     * Y=60 (or the configured value) is used while it is near the map's own
+     * surface range. Maps from deep caves, sky islands or high plateaus get a
+     * local baseline instead, so every map shows its own relief.
+     */
+    private static int chooseStartY(int preferred, int minSurface, int maxSurface) {
+        if (minSurface == Integer.MAX_VALUE || maxSurface == Integer.MIN_VALUE) {
+            return preferred;
+        }
+        int range = maxSurface - minSurface;
+        if (range < 4) {
+            return maxSurface;
+        }
+        if (preferred >= minSurface - 16 && preferred <= maxSurface) {
+            return preferred;
+        }
+        return minSurface + range / 8;
+    }
+
     public static void clear() {
         ENTRIES.clear();
-        currentDimension = null;
     }
 }

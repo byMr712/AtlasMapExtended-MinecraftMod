@@ -25,4 +25,13 @@ public final class FramedMapVolume {
         Arrays.fill(water, false);
         Arrays.fill(valid, false);
     }
+
+    public FramedMapVolume copy() {
+        FramedMapVolume copy = new FramedMapVolume();
+        System.arraycopy(surfaceY, 0, copy.surfaceY, 0, COLUMNS);
+        System.arraycopy(rgb, 0, copy.rgb, 0, COLUMNS);
+        System.arraycopy(water, 0, copy.water, 0, COLUMNS);
+        System.arraycopy(valid, 0, copy.valid, 0, COLUMNS);
+        return copy;
+    }
 }

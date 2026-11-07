@@ -15,7 +15,8 @@ import org.webtrade.atlasmapextended.client.framed3d.FramedMapRenderer;
 @Mixin(ItemFrameRenderer.class)
 public class ItemFrameRendererMixin {
 
-    @Inject(method = "submit", at = @At(value = "INVOKE",
+    @Inject(method = "submit(Lnet/minecraft/client/renderer/entity/state/ItemFrameRenderState;Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/SubmitNodeCollector;Lnet/minecraft/client/renderer/state/level/CameraRenderState;)V",
+            at = @At(value = "INVOKE",
             target = "Lnet/minecraft/client/renderer/MapRenderer;render(Lnet/minecraft/client/renderer/state/MapRenderState;Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/SubmitNodeCollector;ZI)V",
             shift = At.Shift.AFTER))
     private void atlasmapextended$renderFramed3d(

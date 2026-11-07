@@ -14,6 +14,8 @@ import org.webtrade.atlasmapextended.client.data.ModConfig;
  * map-pixel pose (128 px = 1 block).
  */
 public final class FramedMapRenderer {
+    private static final java.util.Set<Integer> LOGGED = new java.util.HashSet<>();
+
     private FramedMapRenderer() {
     }
 
@@ -27,6 +29,11 @@ public final class FramedMapRenderer {
             return;
         }
         MapItemSavedData data = level.getMapData(state.mapId);
+        if (LOGGED.add(state.mapId.id())) {
+            System.out.println("[AtlasMap3D] frame map " + state.mapId.id()
+                    + " data=" + (data != null)
+                    + " colors=" + (data != null && data.colors != null));
+        }
         if (data == null || data.colors == null) {
             return;
         }

@@ -6,6 +6,7 @@
   "client": [
     "ClientChunkCacheMixin",
     "ClientPacketListenerMixin",
+    "FirstPersonHandsAndItemsMixin",
     "GameRendererMixin",
     "HudMixin",
     "ItemFrameRendererMixin",
