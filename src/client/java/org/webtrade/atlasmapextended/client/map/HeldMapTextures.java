@@ -33,7 +33,7 @@ public final class HeldMapTextures {
     private static final int INK = 0xFF4A3B2A;
     private static final int MARKER_SIZE = 8;
 
-    private static final Map<Integer, Entry> ENTRIES = new HashMap<>();
+    private static final Map<String, Entry> ENTRIES = new HashMap<>();
     private static final Map<String, NativeImage> ICONS = new HashMap<>();
 
     private HeldMapTextures() {
@@ -51,20 +51,30 @@ public final class HeldMapTextures {
     }
 
     public static Identifier get(MapId mapId, MapItemSavedData data) {
+        return get(mapId, data, true);
+    }
+
+    /** Frame base: papyrus map without the 2D snapshot overlay (the 3D layer has it). */
+    public static Identifier getFramed(MapId mapId, MapItemSavedData data) {
+        return get(mapId, data, false);
+    }
+
+    private static Identifier get(MapId mapId, MapItemSavedData data, boolean withOverlay) {
         if (data.colors == null) {
             return null;
         }
         int id = mapId.id();
-        FramedMapOverlay overlay = overlayFor(mapId, data);
-        long hash = Arrays.hashCode(data.colors) * 31L + (overlay == null ? 0 : 1);
-        Entry entry = ENTRIES.get(id);
+        FramedMapOverlay overlay = withOverlay ? overlayFor(mapId, data) : null;
+        long hash = Arrays.hashCode(data.colors) * 31L + (overlay == null ? 0 : 1) + (withOverlay ? 1 : 0);
+        String cacheKey = id + (withOverlay ? "h" : "f");
+        Entry entry = ENTRIES.get(cacheKey);
         if (entry == null) {
-            Identifier textureId = Paper.id("held_map/" + id);
+            Identifier textureId = Paper.id((withOverlay ? "held_map/" : "framed_map/") + id);
             DynamicTexture texture = new DynamicTexture(
                     () -> "atlasmap-held-" + id, SIZE, SIZE, false);
             Minecraft.getInstance().getTextureManager().register(textureId, texture);
             entry = new Entry(textureId, texture);
-            ENTRIES.put(id, entry);
+            ENTRIES.put(cacheKey, entry);
         }
         if (entry.hash != hash) {
             entry.hash = hash;
