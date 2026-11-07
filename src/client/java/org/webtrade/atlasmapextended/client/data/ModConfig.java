@@ -18,6 +18,8 @@ public class ModConfig {
     public int deathMarkers = 2;
     /** New death markers created since the limit was last applied. */
     public int deathMarkersCreated = 0;
+    /** Death-marker generation; increasing the limit re-tags the active markers. */
+    public int deathEpoch = 0;
     /** 0 = top right, 1 = top left, 2 = bottom right, 3 = bottom left. */
     public int minimapCorner = 0;
     public boolean minimapCoords = true;
