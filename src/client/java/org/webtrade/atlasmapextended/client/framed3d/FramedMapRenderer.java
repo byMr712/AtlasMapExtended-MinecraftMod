@@ -48,5 +48,10 @@ public final class FramedMapRenderer {
             collector.submitCustomGeometry(pose, RenderTypes.lines(),
                     (p, consumer) -> mesh.emitLines(p.pose(), consumer));
         }
+        for (FramedMapMesh.IconGroup group : mesh.iconGroups()) {
+            org.webtrade.atlasmapextended.client.gui.Paper.ensureFrom(group.texture, group.source);
+            collector.submitCustomGeometry(pose, RenderTypes.entityCutout(group.texture),
+                    (p, consumer) -> group.emit(p.pose(), consumer));
+        }
     }
 }

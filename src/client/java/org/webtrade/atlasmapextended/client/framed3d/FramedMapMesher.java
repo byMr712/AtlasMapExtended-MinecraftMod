@@ -3,10 +3,13 @@ package org.webtrade.atlasmapextended.client.framed3d;
 import org.webtrade.atlasmapextended.client.data.Marker;
 import org.webtrade.atlasmapextended.client.data.Region;
 import org.webtrade.atlasmapextended.client.data.Stroke;
+import org.webtrade.atlasmapextended.client.gui.Paper;
 import org.webtrade.atlasmapextended.client.map.ChunkScanner;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Builds a surface-only relief with a frozen overlay snapshot. Columns at or
@@ -47,6 +50,17 @@ public final class FramedMapMesher {
         }
     }
 
+    private static final class IconBuilder {
+        final net.minecraft.resources.Identifier texture;
+        final net.minecraft.resources.Identifier source;
+        final List<Quad> quads = new ArrayList<>();
+
+        IconBuilder(net.minecraft.resources.Identifier texture, net.minecraft.resources.Identifier source) {
+            this.texture = texture;
+            this.source = source;
+        }
+    }
+
     public static FramedMapMesh build(FramedMapVolume volume, FramedMapKey key, int startY,
                                       FramedMapOverlay overlay) {
         float[] depth = new float[FramedMapVolume.COLUMNS];
@@ -76,6 +90,7 @@ public final class FramedMapMesher {
 
         List<Quad> quads = new ArrayList<>();
         List<Line> lines = new ArrayList<>();
+        Map<String, IconBuilder> icons = new LinkedHashMap<>();
 
         // top faces, merged horizontally while colour and depth match
         for (int pz = 0; pz < FramedMapVolume.SIZE; pz++) {
@@ -103,7 +118,7 @@ public final class FramedMapMesher {
                         px + run, pz, d,
                         color));
                 if (quads.size() >= MAX_QUADS) {
-                    return finish(quads, lines);
+                    return finish(quads, lines, icons);
                 }
                 px += run;
             }
@@ -157,24 +172,25 @@ public final class FramedMapMesher {
                             edgeColor));
                 }
                 if (quads.size() >= MAX_QUADS) {
-                    return finish(quads, lines);
+                    return finish(quads, lines, icons);
                 }
             }
         }
 
         if (overlay != null) {
-            addOverlay(volume, key, startY, depth, quads, lines, overlay, scaleFactor);
+            addOverlay(volume, key, startY, depth, quads, lines, icons, overlay, scaleFactor);
         }
-        return finish(quads, lines);
+        return finish(quads, lines, icons);
     }
 
     private static void addOverlay(FramedMapVolume volume, FramedMapKey key, int startY,
                                    float[] depth, List<Quad> quads, List<Line> lines,
+                                   Map<String, IconBuilder> icons,
                                    FramedMapOverlay overlay, int scaleFactor) {
         for (Marker marker : overlay.markers) {
             int px = pixelX(overlay, scaleFactor, marker.x);
             int pz = pixelZ(overlay, scaleFactor, marker.z);
-            if (px < 2 || pz < 2 || px >= FramedMapVolume.SIZE - 2 || pz >= FramedMapVolume.SIZE - 2) {
+            if (px < 4 || pz < 4 || px >= FramedMapVolume.SIZE - 4 || pz >= FramedMapVolume.SIZE - 4) {
                 continue;
             }
             int index = pz * FramedMapVolume.SIZE + px;
@@ -182,22 +198,27 @@ public final class FramedMapMesher {
                 continue;
             }
             float base = Math.max(0.5f, depth[index]);
-            float top = base + 5.0f;
-            int color = marker.color == 0 ? INK : marker.color;
+            float z = base + 4.0f;
+            int color = marker.color == 0 ? 0xFFFFFFFF : marker.color;
             if ((color >>> 24) == 0) {
                 color |= 0xFF000000;
             }
-            quads.add(new Quad(
-                    px - 2, pz, base,
-                    px - 2, pz, top,
-                    px + 2, pz, top,
-                    px + 2, pz, base,
-                    color));
-            quads.add(new Quad(
-                    px, pz - 2, base,
-                    px, pz - 2, top,
-                    px, pz + 2, top,
-                    px, pz + 2, base,
+
+            String iconName = marker.icon == null || marker.icon.isBlank() ? "pin" : marker.icon;
+            boolean tinted = marker.color != 0;
+            net.minecraft.resources.Identifier texture = Paper.id(
+                    "textures/gui/markers_world/" + (tinted ? "tint/" : "") + iconName + ".png");
+            net.minecraft.resources.Identifier source = tinted
+                    ? Paper.id("textures/gui/markers_tint/" + iconName + ".png")
+                    : Paper.marker(iconName);
+            IconBuilder builder = icons.computeIfAbsent(texture.toString(),
+                    ignored -> new IconBuilder(texture, source));
+
+            builder.quads.add(new Quad(
+                    px - 4, pz - 4, z,
+                    px + 4, pz - 4, z,
+                    px + 4, pz + 4, z,
+                    px - 4, pz + 4, z,
                     color));
         }
 
@@ -254,7 +275,7 @@ public final class FramedMapMesher {
         return (int) Math.round(64.0 + (worldZ - overlay.centerZ) / scaleFactor);
     }
 
-    private static FramedMapMesh finish(List<Quad> quads, List<Line> lines) {
+    private static FramedMapMesh finish(List<Quad> quads, List<Line> lines, Map<String, IconBuilder> icons) {
         float[] positions = new float[quads.size() * 12];
         int[] colors = new int[quads.size()];
         for (int i = 0; i < quads.size(); i++) {
@@ -269,7 +290,21 @@ public final class FramedMapMesher {
             System.arraycopy(line.p, 0, linePositions, i * 6, 6);
             lineColors[i] = line.color;
         }
-        return new FramedMapMesh(positions, colors, quads.size(), linePositions, lineColors, lines.size());
+        List<FramedMapMesh.IconGroup> groups = new ArrayList<>();
+        for (IconBuilder builder : icons.values()) {
+            if (builder.quads.isEmpty()) {
+                continue;
+            }
+            float[] p = new float[builder.quads.size() * 12];
+            int[] c = new int[builder.quads.size()];
+            for (int i = 0; i < builder.quads.size(); i++) {
+                Quad quad = builder.quads.get(i);
+                System.arraycopy(quad.p, 0, p, i * 12, 12);
+                c[i] = quad.color;
+            }
+            groups.add(new FramedMapMesh.IconGroup(builder.texture, builder.source, p, c, builder.quads.size()));
+        }
+        return new FramedMapMesh(positions, colors, quads.size(), linePositions, lineColors, lines.size(), groups);
     }
 
     private static int neighbourHeight(FramedMapVolume volume, int px, int pz, int fallback) {
