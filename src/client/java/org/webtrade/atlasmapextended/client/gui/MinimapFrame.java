@@ -7,9 +7,24 @@ import org.webtrade.atlasmapextended.client.AtlasMapExtendedCommon;
 
 /** Draws the minimap as the last HUD layer, so it covers the scoreboard and stays under screens. */
 public final class MinimapFrame {
+    private static final boolean FABRIC = hasClass("net.fabricmc.loader.api.FabricLoader");
     private static boolean drawnThisFrame;
 
     private MinimapFrame() {
+    }
+
+    private static boolean hasClass(String name) {
+        try {
+            Class.forName(name, false, MinimapFrame.class.getClassLoader());
+            return true;
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    /** Fabric builds the HUD from a layer list; NeoForge gets a direct draw at the end of Gui.render. */
+    public static boolean useLayer() {
+        return FABRIC;
     }
 
     public static void beginFrame() {
