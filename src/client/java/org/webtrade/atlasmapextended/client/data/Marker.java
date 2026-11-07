@@ -21,6 +21,8 @@ public class Marker {
     public boolean hidden;
     /** True for markers created automatically on death. */
     public boolean death;
+    /** Death-marker generation used to rotate only the active limit. */
+    public int deathEpoch;
     public long created = System.currentTimeMillis();
     public List<String> screenshots = new ArrayList<>();
     /** Drawings on top of screenshots, keyed by screenshot file. Points are in image pixels. */
@@ -39,6 +41,7 @@ public class Marker {
         m.z = z;
         m.hidden = hidden;
         m.death = death;
+        m.deathEpoch = deathEpoch;
         m.created = created;
         m.screenshots = new ArrayList<>(screenshots);
         m.shotDrawings = copyDrawings(shotDrawings);
@@ -56,6 +59,7 @@ public class Marker {
         z = from.z;
         hidden = from.hidden;
         death = from.death;
+        deathEpoch = from.deathEpoch;
         screenshots = new ArrayList<>(from.screenshots);
         shotDrawings = copyDrawings(from.shotDrawings);
     }
