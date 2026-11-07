@@ -11,6 +11,7 @@ import net.minecraft.client.player.LocalPlayer;
 import org.webtrade.atlasmapextended.client.data.Marker;
 import org.webtrade.atlasmapextended.client.data.ModConfig;
 import org.webtrade.atlasmapextended.client.data.Storage;
+import org.webtrade.atlasmapextended.client.framed3d.FramedMapCache;
 import org.webtrade.atlasmapextended.client.gui.ImageCache;
 import org.webtrade.atlasmapextended.client.gui.MapScreen;
 import org.webtrade.atlasmapextended.client.gui.MinimapHud;
@@ -58,6 +59,7 @@ public final class AtlasMapExtendedCommon {
         ModConfig.tickFirstRunGuiScale();
         loadTheme();
         MapManager.tick(mc);
+        FramedMapCache.tick(mc.level);
         tickDeathMarker(mc);
         tickPendingDeathScreenshot(mc);
         RegionToast.tick();

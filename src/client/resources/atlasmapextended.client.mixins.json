@@ -8,6 +8,7 @@
     "ClientPacketListenerMixin",
     "GameRendererMixin",
     "HudMixin",
+    "ItemFrameRendererMixin",
     "LanguageManagerMixin",
     "MinecraftMixin",
     "OptionsMixin",
