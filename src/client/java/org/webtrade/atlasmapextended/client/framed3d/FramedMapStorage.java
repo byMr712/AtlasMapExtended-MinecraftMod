@@ -21,7 +21,7 @@ import java.util.zip.InflaterInputStream;
 public final class FramedMapStorage {
     private static final int MAGIC = 0x41334D31; // A3M1
     /** Bumped when the surface sampling changes, so old stored volumes are resampled. */
-    private static final int VERSION = 3;
+    private static final int VERSION = 4;
 
     private FramedMapStorage() {
     }
@@ -58,6 +58,7 @@ public final class FramedMapStorage {
                         out.writeByte(flags);
                         out.writeInt(copy.surfaceY[i]);
                         out.writeInt(copy.rgb[i]);
+                        out.writeByte(copy.waterDepth[i]);
                         out.write(copy.layerColor, i * FramedMapVolume.LAYERS, FramedMapVolume.LAYERS);
                     }
                 }
@@ -92,6 +93,7 @@ public final class FramedMapStorage {
                 volume.water[i] = (flags & 2) != 0;
                 volume.surfaceY[i] = in.readInt();
                 volume.rgb[i] = in.readInt();
+                volume.waterDepth[i] = in.readByte();
                 in.readFully(volume.layerColor, i * FramedMapVolume.LAYERS, FramedMapVolume.LAYERS);
             }
             return volume;

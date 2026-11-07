@@ -131,6 +131,20 @@ public class MapLayer {
         return dir.resolve((int) (k >> 32) + "_" + (int) k + ".png");
     }
 
+    /** Loads a tile without the per-frame budget; used when baking a one-off texture. */
+    public MapTile getForRead(int rx, int rz) {
+        long k = pack(rx, rz);
+        MapTile t = tiles.get(k);
+        if (t != null) {
+            t.touch();
+            return t;
+        }
+        if (onDisk.contains(k) && !broken.contains(k)) {
+            return load(rx, rz);
+        }
+        return null;
+    }
+
     /** Returns the tile for rendering, loading it from disk if the per-frame budget allows. */
     public MapTile getForRender(int rx, int rz) {
         long k = pack(rx, rz);

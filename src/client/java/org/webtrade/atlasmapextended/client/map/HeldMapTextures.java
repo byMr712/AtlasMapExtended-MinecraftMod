@@ -78,7 +78,7 @@ public final class HeldMapTextures {
         }
         if (entry.hash != hash) {
             entry.hash = hash;
-            paint(entry.texture.getPixels(), data.colors, overlay);
+            paint(entry.texture.getPixels(), data.colors, overlay, data);
             entry.texture.upload();
         }
         return entry.id;
@@ -106,17 +106,32 @@ public final class HeldMapTextures {
         return FramedOverlayStorage.getOrCapture(key);
     }
 
-    private static void paint(NativeImage image, byte[] colors, FramedMapOverlay overlay) {
+    private static void paint(NativeImage image, byte[] colors, FramedMapOverlay overlay,
+                              MapItemSavedData data) {
+        // Prefer the mod's own tiles: they already carry the height shading and
+        // water-depth palette used by the minimap and the world map.
+        MapSession session = MapManager.live();
+        MapLayer layer = session == null ? null : session.layer(data.dimension.identifier().toString());
+        int scaleFactor = 1 << data.scale;
         for (int y = 0; y < SIZE; y++) {
             for (int x = 0; x < SIZE; x++) {
                 int packed = colors[y * SIZE + x] & 0xFF;
-                int argb;
+                int argb = 0;
                 if (packed == 0) {
                     argb = PAPER_LIGHT;
-                } else {
-                    // Use the base map colour, not vanilla's baked brightness, so
-                    // the held map matches the mod's own papyrus palette. Water
-                    // keeps vanilla's brightness bits, which encode its depth.
+                } else if (layer != null) {
+                    int wx = data.centerX + (x - 64) * scaleFactor;
+                    int wz = data.centerZ + (y - 64) * scaleFactor;
+                    MapTile tile = layer.getForRead(
+                            Math.floorDiv(wx, MapTile.SIZE), Math.floorDiv(wz, MapTile.SIZE));
+                    if (tile != null) {
+                        argb = tile.getPixel(Math.floorMod(wx, MapTile.SIZE),
+                                Math.floorMod(wz, MapTile.SIZE));
+                    }
+                }
+                if (argb == 0) {
+                    // Fallback for areas the mod has not scanned yet: vanilla
+                    // colours still keep the same papyrus palette.
                     MapColor color = MapColor.byId(packed >> 2);
                     int waterDepth = color == MapColor.WATER ? waterDepth(packed & 3) : 0;
                     argb = ChunkScanner.papyrus(color.col, 0, 0, 0, waterDepth, x, y);

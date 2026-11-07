@@ -69,11 +69,13 @@ public final class FramedMapMesher {
                 int wz = key.originZ() + pz * scaleFactor;
                 float relief = (volume.surfaceY[index] - startY) * (1.0f / scaleFactor);
                 depth[index] = Math.min(MAX_DEPTH, relief) + BASE_OFFSET;
+                int waterDepth = volume.water[index]
+                        ? Math.max(1, volume.waterDepth[index] & 0xFF) : 0;
                 colors[index] = ChunkScanner.papyrus(
                         volume.rgb[index],
                         volume.surfaceY[index],
                         hn, hw,
-                        volume.water[index] ? 1 : 0,
+                        waterDepth,
                         wx, wz);
             }
         }

@@ -59,10 +59,22 @@ public final class FramedMapSampler {
         }
 
         boolean water = mapColor == MapColor.WATER;
+        int depth = 0;
+        if (water) {
+            depth = 1;
+            while (depth <= 32 && surface - depth >= level.getMinY()) {
+                BlockPos below = new BlockPos(wx, surface - depth, wz);
+                if (chunk.getBlockState(below).getFluidState().isEmpty()) {
+                    break;
+                }
+                depth++;
+            }
+        }
 
         volume.valid[index] = true;
         volume.surfaceY[index] = surface;
         volume.water[index] = water;
+        volume.waterDepth[index] = (byte) Math.min(32, depth);
         volume.rgb[index] = water ? MapColor.WATER.col : mapColor.col;
         sampleLayers(level, chunk, volume, index, wx, surface, wz, mapColor);
     }
