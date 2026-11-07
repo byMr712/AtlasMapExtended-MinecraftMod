@@ -47,7 +47,7 @@ public class ModConfig {
         return instance;
     }
 
-    /** First-run default: 110 px at GUI scale 2, 60 px at GUI scale 3. */
+    /** First-run default: 230 px at GUI scale 1, 110 px at scale 2, 60 px at scale 3. */
     private static int defaultSizeIndexForGuiScale() {
         int scale = 3;
         try {
@@ -57,7 +57,7 @@ public class ModConfig {
             }
         } catch (Throwable ignored) {
         }
-        return scale == 2 ? 4 : 2;
+        return scale == 1 ? 8 : scale == 2 ? 4 : 2;
     }
     private static Path file() {
         return Minecraft.getInstance().gameDirectory.toPath().resolve("config").resolve("atlasmapextended.json");
