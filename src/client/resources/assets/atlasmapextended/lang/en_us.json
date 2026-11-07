@@ -60,6 +60,7 @@
   "atlasmapextended.tool.close": "Close map [%s / Esc]",
   "atlasmapextended.draw.pen": "Pen — freehand",
   "atlasmapextended.draw.line": "Straight line",
+  "atlasmapextended.draw.arrow_draw": "Arrow - from tail to head",
   "atlasmapextended.draw.rect": "Rectangle",
   "atlasmapextended.draw.circle": "Circle",
   "atlasmapextended.draw.eraser": "Eraser",
