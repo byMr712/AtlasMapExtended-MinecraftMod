@@ -2,9 +2,7 @@ package org.webtrade.atlasmapextended.client.framed3d;
 
 import com.mojang.blaze3d.platform.NativeImage;
 import com.mojang.blaze3d.vertex.VertexConsumer;
-import net.minecraft.resources.Identifier;
 import org.joml.Matrix4fc;
-import org.webtrade.atlasmapextended.client.gui.Paper;
 
 import java.io.InputStream;
 import java.util.Map;
@@ -198,9 +196,5 @@ public final class IconVoxelShapes {
         int g = Math.min(255, Math.round(((argb >> 8) & 0xFF) * factor));
         int b = Math.min(255, Math.round((argb & 0xFF) * factor));
         return (a << 24) | (r << 16) | (g << 8) | b;
-    }
-
-    public static void clear() {
-        CACHE.clear();
     }
 }

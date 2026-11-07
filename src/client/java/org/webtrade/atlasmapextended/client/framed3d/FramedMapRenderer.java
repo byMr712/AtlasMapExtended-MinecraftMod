@@ -18,9 +18,6 @@ import org.webtrade.atlasmapextended.client.gui.Paper;
  */
 public final class FramedMapRenderer {
     private static final Identifier WHITE = Paper.id("textures/gui/white.png");
-    private static boolean whiteReady;
-    private static final java.util.Set<Integer> LOGGED = new java.util.HashSet<>();
-    private static final java.util.Set<Integer> SUBMITTED = new java.util.HashSet<>();
 
     private FramedMapRenderer() {
     }
@@ -29,21 +26,13 @@ public final class FramedMapRenderer {
         if (!ModConfig.get().framedMaps3D || state.mapId == null) {
             return;
         }
-        if (!whiteReady) {
-            Paper.ensureFrom(WHITE, WHITE);
-            whiteReady = true;
-        }
+        Paper.ensureFrom(WHITE, WHITE);
         Minecraft mc = Minecraft.getInstance();
         ClientLevel level = mc.level;
         if (level == null) {
             return;
         }
         MapItemSavedData data = level.getMapData(state.mapId);
-        if (LOGGED.add(state.mapId.id())) {
-            System.out.println("[AtlasMap3D] frame map " + state.mapId.id()
-                    + " data=" + (data != null)
-                    + " colors=" + (data != null && data.colors != null));
-        }
         if (data == null || data.colors == null) {
             return;
         }
@@ -54,11 +43,6 @@ public final class FramedMapRenderer {
         }
         pose.pushPose();
         pose.scale(1.0f, 1.0f, -1.0f);
-        if (SUBMITTED.add(state.mapId.id())) {
-            System.out.println("[AtlasMap3D] submit map " + state.mapId.id()
-                    + " quads=" + mesh.quadCount() + " lines=" + mesh.lineCount()
-                    + " icons=" + mesh.voxelIcons().size());
-        }
         collector.submitCustomGeometry(pose, RenderTypes.entityCutout(WHITE),
                 (p, consumer) -> mesh.emit(p.pose(), consumer));
         if (mesh.lineCount() > 0) {
@@ -66,7 +50,7 @@ public final class FramedMapRenderer {
                     (p, consumer) -> mesh.emitLines(p.pose(), consumer));
         }
         long gameTime = level.getGameTime();
-        float angle = (gameTime % 3600L) * 0.02f;
+        float angle = (gameTime % 314L) * 0.02f;
         if (!mesh.voxelIcons().isEmpty()) {
             collector.submitCustomGeometry(pose, RenderTypes.entityCutout(WHITE), (p, consumer) -> {
                 Matrix4f base = p.pose();

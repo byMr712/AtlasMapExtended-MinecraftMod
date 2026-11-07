@@ -27,10 +27,6 @@ public final class FramedMapMesh {
         this.voxelIcons = voxelIcons;
     }
 
-    public int quadCount() {
-        return count;
-    }
-
     public int lineCount() {
         return lineCount;
     }
@@ -61,9 +57,11 @@ public final class FramedMapMesh {
             int o = line * 6;
             int c = lineColors[line];
             consumer.addVertex(matrix, linePositions[o], linePositions[o + 1], linePositions[o + 2])
-                    .setColor(c);
+                    .setColor(c)
+                    .setNormal(0.0f, 1.0f, 0.0f);
             consumer.addVertex(matrix, linePositions[o + 3], linePositions[o + 4], linePositions[o + 5])
-                    .setColor(c);
+                    .setColor(c)
+                    .setNormal(0.0f, 1.0f, 0.0f);
         }
     }
 

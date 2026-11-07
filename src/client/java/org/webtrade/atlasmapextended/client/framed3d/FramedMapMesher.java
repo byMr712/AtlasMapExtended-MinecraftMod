@@ -3,13 +3,10 @@ package org.webtrade.atlasmapextended.client.framed3d;
 import org.webtrade.atlasmapextended.client.data.Marker;
 import org.webtrade.atlasmapextended.client.data.Region;
 import org.webtrade.atlasmapextended.client.data.Stroke;
-import org.webtrade.atlasmapextended.client.gui.Paper;
 import org.webtrade.atlasmapextended.client.map.ChunkScanner;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Builds a surface-only relief with a frozen overlay snapshot. Columns at or
@@ -20,7 +17,6 @@ public final class FramedMapMesher {
     private static final int MAX_QUADS = 120_000;
     private static final float MAX_DEPTH = 96.0f;
     private static final float BASE_OFFSET = 0.05f;
-    private static final int INK = 0xFF3A2616;
 
     private FramedMapMesher() {
     }
@@ -167,12 +163,12 @@ public final class FramedMapMesher {
         }
 
         if (overlay != null) {
-            addOverlay(volume, key, startY, depth, quads, lines, icons, overlay, scaleFactor);
+            addOverlay(volume, startY, depth, quads, lines, icons, overlay, scaleFactor);
         }
         return finish(quads, lines, icons);
     }
 
-    private static void addOverlay(FramedMapVolume volume, FramedMapKey key, int startY,
+    private static void addOverlay(FramedMapVolume volume, int startY,
                                    float[] depth, List<Quad> quads, List<Line> lines,
                                    List<FramedMapMesh.VoxelIcon> icons,
                                    FramedMapOverlay overlay, int scaleFactor) {
@@ -188,11 +184,6 @@ public final class FramedMapMesher {
             }
             float base = Math.max(0.5f, depth[index]);
             float z = base + 4.0f;
-            int color = marker.color == 0 ? 0xFFFFFFFF : marker.color;
-            if ((color >>> 24) == 0) {
-                color |= 0xFF000000;
-            }
-
             String iconName = marker.icon == null || marker.icon.isBlank() ? "pin" : marker.icon;
             icons.add(new FramedMapMesh.VoxelIcon(iconName, marker.color, px, pz, z));
         }

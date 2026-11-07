@@ -8,6 +8,8 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.webtrade.atlasmapextended.client.framed3d.FramedMapCache;
+import org.webtrade.atlasmapextended.client.framed3d.FramedOverlayStorage;
+import org.webtrade.atlasmapextended.client.map.HeldMapTextures;
 import org.webtrade.atlasmapextended.client.map.MapManager;
 
 /** Replaces Fabric API's join and disconnect events. */
@@ -22,6 +24,8 @@ public class ClientPacketListenerMixin {
     @Inject(method = "close", at = @At("HEAD"))
     private void atlasmapextended$close(CallbackInfo ci) {
         FramedMapCache.clear();
+        FramedOverlayStorage.clear();
+        HeldMapTextures.clear();
         MapManager.onDisconnect();
     }
 }

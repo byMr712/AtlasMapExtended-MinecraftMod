@@ -75,11 +75,8 @@ public final class FramedMapCache {
                 entry.exploredHash = hash;
                 entry.builtHash = hash;
                 startBuild(entry);
-                System.out.println("[AtlasMap3D] loaded map " + id);
             } else {
                 startSampling(entry, data, hash);
-                System.out.println("[AtlasMap3D] start map " + id
-                        + " center=" + data.centerX + "," + data.centerZ + " scale=" + data.scale);
             }
             ENTRIES.put(id, entry);
         } else if (!entry.key.sameGeometry(key)) {
@@ -87,13 +84,11 @@ public final class FramedMapCache {
             entry.overlay = FramedOverlayStorage.getOrCapture(key);
             startSampling(entry, data, hash);
             ENTRIES.put(id, entry);
-            System.out.println("[AtlasMap3D] geometry changed map " + id);
         } else if (!entry.sampling && !entry.building && entry.mesh != null
                 && entry.builtHash != hash
                 && level.getGameTime() - entry.lastBuildTick > 100) {
             // the map was explored further: rebuild in the background, keep the old mesh visible
             startSampling(entry, data, hash);
-            System.out.println("[AtlasMap3D] refresh map " + id);
         }
 
         return entry.mesh;
@@ -155,8 +150,6 @@ public final class FramedMapCache {
         FramedMapVolume snapshot = entry.volume.copy();
         FramedMapKey key = entry.key;
         long hash = entry.exploredHash;
-        int min = minSurface;
-        int max = maxSurface;
         FramedMapOverlay snapshotOverlay = overlay;
         MESH_POOL.execute(() -> {
             FramedMapMesh mesh = FramedMapMesher.build(snapshot, key, startY, snapshotOverlay);
@@ -170,8 +163,6 @@ public final class FramedMapCache {
                 entry.building = false;
                 entry.lastBuildTick = Minecraft.getInstance().level != null
                         ? Minecraft.getInstance().level.getGameTime() : 0L;
-                System.out.println("[AtlasMap3D] built map " + entry.id + " quads=" + mesh.quadCount()
-                        + " surfaceY=" + min + ".." + max + " startY=" + startY);
             });
         });
     }

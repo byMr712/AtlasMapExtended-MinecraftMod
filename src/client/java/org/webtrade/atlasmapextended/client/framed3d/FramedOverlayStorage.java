@@ -7,11 +7,14 @@ import org.webtrade.atlasmapextended.client.data.Stroke;
 import org.webtrade.atlasmapextended.client.map.MapManager;
 import org.webtrade.atlasmapextended.client.map.MapSession;
 
-import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
+import java.util.Map;
 
 /** Loads or creates the frozen overlay snapshot for a map. */
 public final class FramedOverlayStorage {
+    private static final Map<Path, FramedMapOverlay> CACHE = new HashMap<>();
+
     private FramedOverlayStorage() {
     }
 
@@ -29,15 +32,19 @@ public final class FramedOverlayStorage {
         if (path == null) {
             return null;
         }
-        FramedMapOverlay overlay = Storage.readJson(path, FramedMapOverlay.class, null);
+        FramedMapOverlay overlay = CACHE.get(path);
         if (overlay != null && overlay.matches(key)) {
             return overlay;
         }
-        overlay = capture(key);
-        if (overlay == null) {
-            return null;
+        overlay = Storage.readJson(path, FramedMapOverlay.class, null);
+        if (overlay == null || !overlay.matches(key)) {
+            overlay = capture(key);
+            if (overlay == null) {
+                return null;
+            }
+            Storage.writeJsonAsync(path, overlay);
         }
-        Storage.writeJsonAsync(path, overlay);
+        CACHE.put(path, overlay);
         return overlay;
     }
 
@@ -95,5 +102,9 @@ public final class FramedOverlayStorage {
             }
         }
         return false;
+    }
+
+    public static void clear() {
+        CACHE.clear();
     }
 }
