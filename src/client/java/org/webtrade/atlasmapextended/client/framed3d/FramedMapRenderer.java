@@ -55,6 +55,10 @@ public final class FramedMapRenderer {
         pose.scale(1.0f, 1.0f, -1.0f);
         collector.submitCustomGeometry(pose, RenderTypes.entityCutout(WHITE),
                 (p, consumer) -> mesh.emit(p.pose(), consumer, meshBrightness, light));
+        if (mesh.fillCount() > 0) {
+            collector.submitCustomGeometry(pose, RenderTypes.debugQuads(),
+                    (p, consumer) -> mesh.emitFills(p.pose(), consumer, meshBrightness));
+        }
         if (mesh.lineCount() > 0) {
             collector.submitCustomGeometry(pose, RenderTypes.lines(),
                     (p, consumer) -> mesh.emitLines(p.pose(), consumer, meshBrightness));
