@@ -2,6 +2,7 @@ package org.webtrade.atlasmapextended.client.framed3d;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.Minecraft;
+import net.minecraft.core.Direction;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.entity.state.ItemFrameRenderState;
@@ -51,6 +52,8 @@ public final class FramedMapRenderer {
                     (p, consumer) -> mesh.emitLines(p.pose(), consumer));
         }
         float angle = (gameTime % 314L) * 0.02f;
+        boolean verticalFrame = state.direction != null && state.direction.getAxis().isVertical();
+        float standUp = (float) Math.toRadians(state.direction == Direction.DOWN ? 90.0 : -90.0);
         if (!mesh.voxelIcons().isEmpty()) {
             collector.submitCustomGeometry(pose, RenderTypes.entityCutout(WHITE), (p, consumer) -> {
                 Matrix4f base = p.pose();
@@ -59,11 +62,16 @@ public final class FramedMapRenderer {
                     if (shape == null) {
                         continue;
                     }
-                    Matrix4f matrix = new Matrix4f(base)
-                            .translate(icon.x(), icon.y(), icon.z())
-                            .rotateY(angle)
-                            .scale(0.5f, 0.5f, 0.5f)
-                            .translate(-8.0f, -8.0f, -shape.depth / 2.0f);
+                    Matrix4f matrix = new Matrix4f(base).translate(icon.x(), icon.y(), icon.z());
+                    if (verticalFrame) {
+                        // Map lies flat: stand the icon up out of the map and spin it
+                        // around that vertical axis, like a floating plumbob.
+                        matrix.rotateZ(angle).rotateX(standUp);
+                    } else {
+                        matrix.rotateY(angle);
+                    }
+                    matrix.scale(0.5f, 0.5f, 0.5f)
+                            .translate(-8.0f, -16.0f, -shape.depth / 2.0f);
                     shape.emit(matrix, consumer);
                 }
             });

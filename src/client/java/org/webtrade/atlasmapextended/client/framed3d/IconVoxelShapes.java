@@ -79,14 +79,14 @@ public final class IconVoxelShapes {
                 int sy = y * image.getHeight() / GRID;
                 for (int x = 0; x < GRID; x++) {
                     int sx = x * image.getWidth() / GRID;
-                    int abgr = image.getPixel(sx, sy);
-                    int a = (abgr >>> 24) & 0xFF;
+                    int pixel = image.getPixel(sx, sy);
+                    int a = (pixel >>> 24) & 0xFF;
                     if (a < ALPHA_THRESHOLD) {
                         continue;
                     }
-                    int r = abgr & 0xFF;
-                    int g = (abgr >>> 8) & 0xFF;
-                    int b = (abgr >>> 16) & 0xFF;
+                    int r = (pixel >> 16) & 0xFF;
+                    int g = (pixel >> 8) & 0xFF;
+                    int b = pixel & 0xFF;
                     if (tinted) {
                         r = r * ((tint >> 16) & 0xFF) / 255;
                         g = g * ((tint >> 8) & 0xFF) / 255;

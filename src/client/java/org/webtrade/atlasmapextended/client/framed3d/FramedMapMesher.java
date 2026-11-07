@@ -20,6 +20,8 @@ public final class FramedMapMesher {
     private static final float BASE_OFFSET = 0.05f;
     private static final float SIDE_SHADE = 0.78f;
     private static final float EDGE_SHADE = 0.68f;
+    /** How far above the surface marker icons hover, in map pixels. */
+    private static final float ICON_HOVER = 16.0f;
 
     private FramedMapMesher() {
     }
@@ -232,7 +234,7 @@ public final class FramedMapMesher {
                 continue;
             }
             float base = Math.max(0.5f, depth[index]);
-            float z = base + 4.0f;
+            float z = base + ICON_HOVER;
             String iconName = marker.icon == null || marker.icon.isBlank() ? "pin" : marker.icon;
             icons.add(new FramedMapMesh.VoxelIcon(iconName, marker.color, px, pz, z));
         }
