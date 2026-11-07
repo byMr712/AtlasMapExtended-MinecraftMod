@@ -16,12 +16,18 @@ public class GuiMixin {
 
     @Inject(method = "render", at = @At("HEAD"))
     private void atlasmapextended$renderWorldMarkers(GuiGraphics g, DeltaTracker delta, CallbackInfo ci) {
+        MinimapFrame.beginFrame();
         WorldMarkerHud.render(g);
     }
 
     @Inject(method = "render", at = @At("TAIL"))
-    private void atlasmapextended$renderMinimap(GuiGraphics g, DeltaTracker delta, CallbackInfo ci) {
-        MinimapFrame.draw(g, delta);
+    private void atlasmapextended$rememberMinimapFrame(GuiGraphics g, DeltaTracker delta, CallbackInfo ci) {
+        MinimapFrame.remember(g, delta);
+    }
+
+    @Inject(method = "renderSavingIndicator", at = @At("TAIL"))
+    private void atlasmapextended$renderMinimapLate(GuiGraphics g, DeltaTracker delta, CallbackInfo ci) {
+        MinimapFrame.drawLate();
     }
 
 }
