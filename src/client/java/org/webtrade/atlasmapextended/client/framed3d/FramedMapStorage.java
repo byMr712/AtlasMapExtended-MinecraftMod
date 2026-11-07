@@ -20,7 +20,8 @@ import java.util.zip.InflaterInputStream;
  */
 public final class FramedMapStorage {
     private static final int MAGIC = 0x41334D31; // A3M1
-    private static final int VERSION = 1;
+    /** Bumped when the surface sampling changes, so old stored volumes are resampled. */
+    private static final int VERSION = 2;
 
     private FramedMapStorage() {
     }

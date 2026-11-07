@@ -36,7 +36,8 @@ public final class FramedMapSampler {
         }
 
         LevelChunk chunk = level.getChunk(wx >> 4, wz >> 4);
-        int surface = chunk.getHeight(Heightmap.Types.WORLD_SURFACE, wx & 15, wz & 15) - 1;
+        // getHeight already returns the Y of the top non-air block.
+        int surface = chunk.getHeight(Heightmap.Types.WORLD_SURFACE, wx & 15, wz & 15);
         if (surface < level.getMinY()) {
             return;
         }
