@@ -96,3 +96,4 @@
 
 - **Автор мода:** [erkinpaw](https://github.com/erkinpaw) · **Лицензия:** [MIT](https://github.com/byMr712/AtlasMapExtended-MinecraftMod/blob/26.3/LICENSE).  
 - **Автор порта на Fabric/Neoforge 1.21 - 26.3:** [Mr712](https://github.com/byMr712/AtlasMapExtended-MinecraftMod) · **Лицензия:** [Apache License 2.0](LICENSE).
+- **Автор идеи 3D карты:** [sulikala](https://www.curseforge.com/members/sulikala)
