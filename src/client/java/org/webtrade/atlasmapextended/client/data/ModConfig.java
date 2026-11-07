@@ -47,16 +47,16 @@ public class ModConfig {
         return instance;
     }
 
-    /** First-run default: 230 px at GUI scale 1, 110 px at 2, 80 px at 3, 60 px otherwise. Auto uses the real scale. */
+    /** First-run default: 230 px at GUI scale 1, 110 px at 2, 80 px at 3, 60 px otherwise. */
     private static int defaultSizeIndexForGuiScale() {
-        int scale = 3;
+        int scale = -1;
         try {
             Minecraft mc = Minecraft.getInstance();
             if (mc != null && mc.options != null) {
-                scale = mc.options.guiScale().get();
-                if (scale == 0) {
-                    scale = (int) mc.getWindow().getGuiScale();
-                }
+                // calculateScale also resolves "auto" (0) to the real GUI scale.
+                scale = mc.getWindow().calculateScale(
+                        mc.options.guiScale().get(),
+                        mc.options.forceUnicodeFont().get());
             }
         } catch (Throwable ignored) {
         }
