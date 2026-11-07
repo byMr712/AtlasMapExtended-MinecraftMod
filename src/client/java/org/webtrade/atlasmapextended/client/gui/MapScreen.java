@@ -77,7 +77,7 @@ public class MapScreen extends Screen {
 
     private enum Tool { NONE, RULER, DRAW, REGION }
 
-    private enum DrawTool { PEN, LINE, RECT, CIRCLE, ERASER }
+    private enum DrawTool { PEN, LINE, ARROW, RECT, CIRCLE, ERASER }
 
     private enum RegionShape { FREEHAND, RECT, CIRCLE }
 
@@ -950,7 +950,7 @@ public class MapScreen extends Screen {
     private void drawToolBar(GuiGraphics g, int mx, int my, int x, int y, boolean active, Runnable onUndo,
                              Runnable onClear, Component clearTip) {
         DrawTool[] tools = DrawTool.values();
-        String[] icons = {"pen", "line", "rect", "circle", "eraser"};
+        String[] icons = {"pen", "line", "arrow_draw", "rect", "circle", "eraser"};
         Paper.panel(g, x, y, DRAW_BAR_W, DRAW_BAR_H);
         ui(x, y, DRAW_BAR_W, DRAW_BAR_H);
         hit(x, y, DRAW_BAR_W, DRAW_BAR_H, () -> {
@@ -2279,6 +2279,7 @@ public class MapScreen extends Screen {
             }
             case PEN -> annotCurrent = new Stroke(Stroke.PEN, c, w, new double[]{wx, wz});
             case LINE -> annotCurrent = new Stroke(Stroke.LINE, c, w, new double[]{wx, wz, wx, wz});
+            case ARROW -> annotCurrent = new Stroke(Stroke.ARROW, c, w, new double[]{wx, wz, wx, wz});
             case RECT -> annotCurrent = new Stroke(Stroke.RECT, c, w, new double[]{wx, wz, wx, wz});
             case CIRCLE -> annotCurrent = new Stroke(Stroke.CIRCLE, c, w, new double[]{wx, wz, wx, wz});
         }
@@ -2974,6 +2975,7 @@ public class MapScreen extends Screen {
                 }
                 case PEN -> current = new Stroke(Stroke.PEN, c, w, new double[]{wx, wz});
                 case LINE -> current = new Stroke(Stroke.LINE, c, w, new double[]{wx, wz, wx, wz});
+            case ARROW -> current = new Stroke(Stroke.ARROW, c, w, new double[]{wx, wz, wx, wz});
                 case RECT -> current = new Stroke(Stroke.RECT, c, w, new double[]{wx, wz, wx, wz});
                 case CIRCLE -> current = new Stroke(Stroke.CIRCLE, c, w, new double[]{wx, wz, wx, wz});
             }
