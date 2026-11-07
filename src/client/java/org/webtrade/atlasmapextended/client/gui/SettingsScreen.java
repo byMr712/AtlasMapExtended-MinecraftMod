@@ -36,8 +36,7 @@ public class SettingsScreen extends Screen {
 
     @Override
     public void onClose() {
-        cfg.save();
-        minecraft.setScreen(parent);
+        done();
     }
 
     @Override
