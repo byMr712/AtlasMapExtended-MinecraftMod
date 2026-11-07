@@ -25,7 +25,7 @@ public final class FramedMapRenderer {
     private static final float GLOW_ICON_BRIGHTNESS = 1.5f;
     /** One full eased turn, then a short rest before the next one. */
     private static final int SPIN_TICKS = 80;
-    private static final int SPIN_PAUSE = 40;
+    private static final int SPIN_PAUSE = 10;
 
     private FramedMapRenderer() {
     }
@@ -73,16 +73,21 @@ public final class FramedMapRenderer {
                     if (shape == null) {
                         continue;
                     }
+                    boolean arrowIcon = icon.icon().startsWith("arrow");
                     Matrix4f matrix = new Matrix4f(base).translate(icon.x(), icon.y(), icon.z());
-                    if (verticalFrame) {
+                    if (arrowIcon) {
+                        // Arrows lie flat along their line and spin around the map normal.
+                        matrix.rotateZ(angle);
+                    } else if (verticalFrame) {
                         // Map lies flat: stand the icon up out of the map and spin it
                         // around that vertical axis, like a floating plumbob.
                         matrix.rotateZ(angle).rotateX(standUp);
                     } else {
                         matrix.rotateY(angle);
                     }
+                    float yOffset = arrowIcon ? -8.0f : -16.0f;
                     matrix.scale(ICON_SCALE, ICON_SCALE, ICON_SCALE)
-                            .translate(-8.0f, -16.0f, -shape.depth / 2.0f);
+                            .translate(-8.0f, yOffset, -shape.depth / 2.0f);
                     shape.emit(matrix, consumer, iconBrightness, light);
                 }
             });

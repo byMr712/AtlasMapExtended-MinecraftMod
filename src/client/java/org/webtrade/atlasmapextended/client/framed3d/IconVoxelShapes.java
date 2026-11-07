@@ -16,7 +16,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class IconVoxelShapes {
     private static final int GRID = 16;
-    private static final float DEPTH = 12.0f;
+    private static final float DEPTH = 4.0f;
     private static final int ALPHA_THRESHOLD = 32;
     private static final Map<String, Shape> CACHE = new ConcurrentHashMap<>();
 
