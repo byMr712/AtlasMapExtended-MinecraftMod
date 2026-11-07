@@ -10,10 +10,10 @@ public class ModConfig {
     public static final int[] MINIMAP_SIZES = {20, 40, 60, 80, 110, 140, 170, 200, 230, 260, 290};
 
     public boolean minimapEnabled = true;
-    public int minimapSizeIndex = 1;
+    public int minimapSizeIndex = 2;
     /** Bumped when the size list changes, so old indices can be remapped once. */
     public int minimapSizesVersion = 0;
-    public int minimapZoomIndex = 2;
+    public int minimapZoomIndex = 0;
     /** 0 = top right, 1 = top left, 2 = bottom right, 3 = bottom left. */
     public int minimapCorner = 0;
     public boolean minimapCoords = true;
