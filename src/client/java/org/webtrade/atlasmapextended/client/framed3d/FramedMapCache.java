@@ -38,7 +38,6 @@ public final class FramedMapCache {
         final FramedMapKey key;
         final String id;
         FramedMapVolume volume = new FramedMapVolume();
-        byte[] explored;
         long exploredHash;
         int cursor;
         int retryCursor;
@@ -78,32 +77,30 @@ public final class FramedMapCache {
             FramedMapVolume stored = FramedMapStorage.load(key);
             if (stored != null) {
                 entry.volume = stored;
-                entry.explored = data.colors.clone();
                 entry.exploredHash = hash;
                 entry.builtHash = hash;
                 startBuild(entry);
             } else {
-                startSampling(entry, data, hash);
+                startSampling(entry, hash);
             }
             ENTRIES.put(id, entry);
         } else if (!entry.key.sameGeometry(key)) {
             entry = new Entry(key);
             entry.overlay = FramedOverlayStorage.getOrCapture(key);
-            startSampling(entry, data, hash);
+            startSampling(entry, hash);
             ENTRIES.put(id, entry);
         } else if (!entry.sampling && !entry.building && entry.mesh != null
                 && entry.builtHash != hash
                 && level.getGameTime() - entry.lastBuildTick > 100) {
             // the map was explored further: rebuild in the background, keep the old mesh visible
-            startSampling(entry, data, hash);
+            startSampling(entry, hash);
         }
 
         return entry.mesh;
     }
 
-    private static void startSampling(Entry entry, MapItemSavedData data, long hash) {
+    private static void startSampling(Entry entry, long hash) {
         entry.volume.clear();
-        entry.explored = data.colors.clone();
         entry.exploredHash = hash;
         entry.cursor = 0;
         entry.retryCursor = 0;
@@ -126,7 +123,7 @@ public final class FramedMapCache {
                 for (; entry.cursor < end; entry.cursor++) {
                     int px = entry.cursor % FramedMapVolume.SIZE;
                     int pz = entry.cursor / FramedMapVolume.SIZE;
-                    FramedMapSampler.sampleColumn(level, entry.volume, entry.key, entry.explored, px, pz);
+                    FramedMapSampler.sampleColumn(level, entry.volume, entry.key, px, pz);
                 }
                 if (entry.cursor >= FramedMapVolume.COLUMNS) {
                     entry.sampling = false;
@@ -145,19 +142,19 @@ public final class FramedMapCache {
      * background and rebuild once something was filled in.
      */
     private static void retryMissing(ClientLevel level, Entry entry) {
-        if (entry.building || entry.explored == null) {
+        if (entry.building) {
             return;
         }
         int filled = 0;
         int end = Math.min(FramedMapVolume.COLUMNS, entry.retryCursor + RETRY_COLUMNS_PER_TICK);
         for (; entry.retryCursor < end; entry.retryCursor++) {
             int index = entry.retryCursor;
-            if (entry.explored[index] == 0 || entry.volume.valid[index]) {
+            if (entry.volume.valid[index]) {
                 continue;
             }
             int px = index % FramedMapVolume.SIZE;
             int pz = index / FramedMapVolume.SIZE;
-            FramedMapSampler.sampleColumn(level, entry.volume, entry.key, entry.explored, px, pz);
+            FramedMapSampler.sampleColumn(level, entry.volume, entry.key, px, pz);
             if (entry.volume.valid[index]) {
                 filled++;
             }

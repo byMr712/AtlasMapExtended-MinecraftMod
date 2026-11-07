@@ -21,13 +21,9 @@ public final class FramedMapSampler {
             ClientLevel level,
             FramedMapVolume volume,
             FramedMapKey key,
-            byte[] explored,
             int px, int pz
     ) {
         int index = pz * FramedMapVolume.SIZE + px;
-        if (explored[index] == 0) {
-            return;
-        }
 
         int scaleFactor = key.scaleFactor();
         int wx = key.originX() + px * scaleFactor;
