@@ -40,7 +40,7 @@ public final class AtlasMapExtendedCommon {
     }
 
     public static void onTick(Minecraft mc) {
-        ModConfig.resolveFirstRunGuiScale();
+        ModConfig.tickFirstRunGuiScale();
         loadTheme();
         MapManager.tick(mc);
         RegionToast.tick();

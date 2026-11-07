@@ -29,7 +29,7 @@ public class ModConfig {
     public boolean markerLabels = true;
 
     private static ModConfig instance;
-    private static boolean firstRunGuiScalePending;
+    private static int firstRunSizeDelay = -1;
 
     public static ModConfig get() {
         if (instance == null) {
@@ -37,7 +37,7 @@ public class ModConfig {
             fallback.minimapSizesVersion = 1;
             boolean existed = java.nio.file.Files.isRegularFile(file());
             instance = Storage.readJson(file(), ModConfig.class, fallback);
-            firstRunGuiScalePending = !existed;
+            firstRunSizeDelay = existed ? -1 : 60;
             if (instance.minimapSizesVersion == 0) {
                 // Old config: the first four slots used to be 80/110/140/170.
                 instance.minimapSizeIndex = Math.min(MINIMAP_SIZES.length - 1, instance.minimapSizeIndex + 3);
@@ -49,13 +49,17 @@ public class ModConfig {
         return instance;
     }
 
-    /** Resolves the first-run minimap size once the window really has its final GUI scale. */
-    public static void resolveFirstRunGuiScale() {
+    /** Resolves the first-run minimap size after the window had time to settle. */
+    public static void tickFirstRunGuiScale() {
         ModConfig cfg = get();
-        if (!firstRunGuiScalePending) {
+        if (firstRunSizeDelay < 0) {
             return;
         }
-        firstRunGuiScalePending = false;
+        if (firstRunSizeDelay > 0) {
+            firstRunSizeDelay--;
+            return;
+        }
+        firstRunSizeDelay = -1;
         int scale = -1;
         try {
             Minecraft mc = Minecraft.getInstance();
