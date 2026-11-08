@@ -28,6 +28,7 @@ import org.webtrade.atlasmapextended.client.gui.Paper;
 
 import java.util.ArrayDeque;
 import java.util.HashMap;
+import java.util.List;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -58,7 +59,6 @@ public final class FramedMapConnections {
     private static final Map<Key, Cached> CACHE = new HashMap<>();
     private static final Set<Key> LOGGED_KEYS = new HashSet<>();
     private static final Set<Integer> RIM_LOGGED = new HashSet<>();
-    private static final Map<SingleKey, SingleState> SINGLE = new HashMap<>();
     private static final Map<GroupKey, GroupInfo> GROUP_INFO = new HashMap<>();
     private static final Map<Long, GroupKey> POSITION_GROUP = new HashMap<>();
     /** Positions of large unfinished clusters, valid for a few ticks. */
@@ -83,17 +83,9 @@ public final class FramedMapConnections {
     }
 
     private record Cached(long tick, int frameMask, int textureMask, int worldMask,
-                          int tileDiv, int tileCol, int tileRow, int singleRotation,
+                          int tileDiv, int tileCol, int tileRow,
                           boolean suppress3D, GroupKey group, Vec3 center,
                           boolean[] groupGlow) {
-    }
-
-    private record SingleKey(long pos, int direction, int mapId, ResourceKey<Level> dimension) {
-    }
-
-    private static final class SingleState {
-        int rotation;
-        int entityId = Integer.MIN_VALUE;
     }
 
     private record TileInfo(int div, int col, int row, GroupKey group, boolean suppress3D) {
@@ -245,26 +237,6 @@ public final class FramedMapConnections {
         return leader == pos.asLong();
     }
 
-    /**
-     * Rotation of a floor map whose top points away from the player, so the
-     * map reads like the held preview from the player's side.
-     * 0 = north, 1 = east, 2 = south, 3 = west.
-     */
-    public static int floorPlayerRotation(double centerX, double centerZ, Vec3 eye) {
-        if (eye == null) {
-            return 0;
-        }
-        double dx = eye.x - centerX;
-        double dz = eye.z - centerZ;
-        int playerDirection;
-        if (Math.abs(dx) > Math.abs(dz)) {
-            playerDirection = dx > 0 ? 1 : 3; // east / west
-        } else {
-            playerDirection = dz > 0 ? 2 : 0; // south / north
-        }
-        return (playerDirection + 2) & 3;
-    }
-
     /** Rotates an unrotated source pixel into the displayed mega-map image. */
     public static int rotateSourceX(int x, int z, int rotation) {
         return switch (rotation & 3) {
@@ -339,10 +311,6 @@ public final class FramedMapConnections {
             int textureMask = state.direction.getAxis() == Direction.Axis.Y
                     ? worldTextureMask(worldMask)
                     : textureMask(frameMask, state.rotation);
-            int singleRotation = 0;
-            if (!mega && state.direction == Direction.UP) {
-                singleRotation = singleRotation(level, pos, state, data, camera);
-            }
             // A mega group is one big map; aim LOD at its geometric centre,
             // not at whichever tile happens to submit the shared mesh.
             double centerX = pos.getX() + 0.5;
@@ -358,7 +326,7 @@ public final class FramedMapConnections {
             }
             Vec3 center = new Vec3(centerX, centerY, centerZ);
             cached = new Cached(tick, frameMask, textureMask, worldMask,
-                    tile.div(), tile.col(), tile.row(), singleRotation,
+                    tile.div(), tile.col(), tile.row(),
                     tile.suppress3D(), tile.group(), center,
                     mega && info != null ? info.glowTiles : null);
             if (CACHE.size() > MAX_CACHE) {
@@ -369,7 +337,7 @@ public final class FramedMapConnections {
                     || previous.worldMask() != worldMask || !LOGGED_KEYS.contains(key)) {
                 logSummary(level, pos, state, data, frameMask, textureMask, worldMask,
                         tile.div(), tile.col(), tile.row(),
-                        tile.group() == null ? singleRotation : groupRotation(tile.group()));
+                        tile.group() == null ? 0 : groupRotation(tile.group()));
                 LOGGED_KEYS.add(key);
             }
         }
@@ -382,12 +350,11 @@ public final class FramedMapConnections {
             state.rotation = 0;
         }
 
-        boolean front = camera == null || camera.pos == null || frontSide(camera.pos, pos, state.direction);
+        boolean front = camera == null || camera.pos == null || frontSide(camera.pos, state, cached.center());
         int frameMask = front ? cached.frameMask() : 0;
         int textureMask = front ? cached.textureMask() : 0;
         int worldMask = front ? cached.worldMask() : 0;
-        int tileRotation = cached.group() != null
-                ? groupRotation(cached.group()) : cached.singleRotation();
+        int tileRotation = cached.group() != null ? groupRotation(cached.group()) : 0;
         int light = state.isGlowFrame ? 15728880 : state.lightCoords;
         int groupLight = -1;
         if (cached.group() != null) {
@@ -418,7 +385,6 @@ public final class FramedMapConnections {
 
     public static void clear() {
         CACHE.clear();
-        SINGLE.clear();
         GROUPS.clear();
         GROUP_INFO.clear();
         POSITION_GROUP.clear();
@@ -430,11 +396,19 @@ public final class FramedMapConnections {
         current = null;
     }
 
-    private static boolean frontSide(Vec3 camera, BlockPos pos, Direction direction) {
-        double dx = camera.x - (pos.getX() + 0.5);
-        double dy = camera.y - (pos.getY() + 0.5);
-        double dz = camera.z - (pos.getZ() + 0.5);
-        return dx * direction.getStepX() + dy * direction.getStepY() + dz * direction.getStepZ() >= 0.0;
+    private static boolean frontSide(Vec3 camera, ItemFrameRenderState state, Vec3 center) {
+        if (camera == null || state.direction == null) {
+            return true;
+        }
+        Direction dir = state.direction;
+        double sx = center != null ? center.x : state.x;
+        double sy = center != null ? center.y : state.y;
+        double sz = center != null ? center.z : state.z;
+        double dx = camera.x - sx;
+        double dy = camera.y - sy;
+        double dz = camera.z - sz;
+        double dot = dx * dir.getStepX() + dy * dir.getStepY() + dz * dir.getStepZ();
+        return dot >= -1.0;
     }
 
     private static int computeFrameMask(ClientLevel level, BlockPos pos, ItemFrameRenderState state,
@@ -478,12 +452,26 @@ public final class FramedMapConnections {
         return frameAt(level, pos, direction, rotation, ownData, ownId, mega) != null;
     }
 
+    private static long lastCacheTick = -1;
+    private static final Map<BlockPos, List<ItemFrame>> FRAME_POS_CACHE = new HashMap<>();
+
+    private static List<ItemFrame> framesAt(ClientLevel level, BlockPos pos) {
+        long tick = level.getGameTime();
+        if (tick != lastCacheTick) {
+            FRAME_POS_CACHE.clear();
+            lastCacheTick = tick;
+        }
+        return FRAME_POS_CACHE.computeIfAbsent(pos.immutable(), p -> {
+            AABB box = new AABB(p.getX(), p.getY(), p.getZ(),
+                    p.getX() + 1.0, p.getY() + 1.0, p.getZ() + 1.0).inflate(0.01);
+            return level.getEntitiesOfClass(ItemFrame.class, box);
+        });
+    }
+
     /** The item frame that occupies exactly this block, or null. */
     private static ItemFrame frameAt(ClientLevel level, BlockPos pos, Direction direction, int rotation,
                                      MapItemSavedData ownData, MapId ownId, boolean mega) {
-        AABB box = new AABB(pos.getX(), pos.getY(), pos.getZ(),
-                pos.getX() + 1.0, pos.getY() + 1.0, pos.getZ() + 1.0).inflate(0.01);
-        for (ItemFrame frame : level.getEntitiesOfClass(ItemFrame.class, box)) {
+        for (ItemFrame frame : framesAt(level, pos)) {
             // The frame box is a full block, so the inflated query also finds
             // the current frame and diagonal neighbours. Only the frame that
             // actually occupies the requested block is a side neighbour.
@@ -515,9 +503,7 @@ public final class FramedMapConnections {
     /** Same map, same plane, same scale, rotation intentionally ignored. */
     private static ItemFrame sameMapFrameAt(ClientLevel level, BlockPos pos, Direction direction,
                                             MapId ownId, MapItemSavedData ownData) {
-        AABB box = new AABB(pos.getX(), pos.getY(), pos.getZ(),
-                pos.getX() + 1.0, pos.getY() + 1.0, pos.getZ() + 1.0).inflate(0.01);
-        for (ItemFrame frame : level.getEntitiesOfClass(ItemFrame.class, box)) {
+        for (ItemFrame frame : framesAt(level, pos)) {
             if (!frame.blockPosition().equals(pos) || frame.getDirection() != direction) {
                 continue;
             }
@@ -703,8 +689,7 @@ public final class FramedMapConnections {
                     initialRotation = GROUPS.get(inherited).rotation;
                     GROUPS.remove(inherited);
                 } else {
-                    initialRotation = state.direction == Direction.UP && camera != null
-                            ? floorPlayerRotation(centerX, centerZ, camera.pos) : 0;
+                    initialRotation = 0;
                 }
             }
             groupState.entities.clear();
@@ -862,28 +847,6 @@ public final class FramedMapConnections {
         return mask;
     }
 
-    /**
-     * Orientation of a lone floor map. It is chosen once, when the map is
-     * first placed, from the direction the player is looking, and then stays
-     * fixed no matter where the player walks.
-     */
-    private static int singleRotation(ClientLevel level, BlockPos pos, ItemFrameRenderState state,
-                                      MapItemSavedData data, CameraRenderState camera) {
-        SingleKey key = new SingleKey(pos.asLong(), state.direction.ordinal(),
-                state.mapId.id(), level.dimension());
-        SingleState stored = SINGLE.computeIfAbsent(key, k -> new SingleState());
-        ItemFrame frame = frameAt(level, pos, state.direction, state.rotation & 3,
-                data, state.mapId, false);
-        if (frame != null && stored.entityId != frame.getId()) {
-            stored.entityId = frame.getId();
-            stored.rotation = floorPlayerRotation(pos.getX() + 0.5, pos.getZ() + 0.5,
-                    camera != null ? camera.pos : null);
-            FramedMapDebug.log("single map={} at={} placed rot={}",
-                    state.mapId.id(), pos, stored.rotation);
-        }
-        return stored.rotation & 3;
-    }
-
     private static boolean intersects(Set<Integer> a, Set<Integer> b) {
         if (a.isEmpty() || b.isEmpty()) {
             return false;
@@ -1039,9 +1002,7 @@ public final class FramedMapConnections {
 
     private static void debugSide(ClientLevel level, BlockPos pos, String side,
                                   ItemFrameRenderState state, MapItemSavedData ownData) {
-        AABB box = new AABB(pos.getX(), pos.getY(), pos.getZ(),
-                pos.getX() + 1.0, pos.getY() + 1.0, pos.getZ() + 1.0).inflate(0.01);
-        var frames = level.getEntitiesOfClass(ItemFrame.class, box);
+        var frames = framesAt(level, pos);
         if (frames.isEmpty()) {
             FramedMapDebug.log("  {} {}: no item frame entity", side, pos);
             return;

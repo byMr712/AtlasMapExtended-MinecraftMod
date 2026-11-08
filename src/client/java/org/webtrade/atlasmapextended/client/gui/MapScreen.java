@@ -1576,7 +1576,11 @@ public class MapScreen extends Screen {
         if (mc.player == null) {
             return;
         }
-        mc.player.connection.sendCommand("execute in " + m.dim + " run tp @s " + m.x + ".5 " + m.y + " " + m.z + ".5");
+        net.minecraft.resources.Identifier dim = net.minecraft.resources.Identifier.tryParse(m.dim);
+        if (dim == null || !dim.toString().equals(m.dim)) {
+            return;
+        }
+        mc.player.connection.sendCommand("execute in " + dim + " run tp @s " + m.x + ".5 " + m.y + " " + m.z + ".5");
         onClose();
     }
 

@@ -51,11 +51,10 @@ final class RegionOverlay {
         if (dirty) {
             NativeImage image = texture.getPixels();
             if (image != null) {
-                for (int py = 0; py < height; py++) {
-                    int row = py * width;
-                    for (int px = 0; px < width; px++) {
-                        image.setPixel(px, py, pixels[row + px]);
-                    }
+                java.nio.ByteBuffer buf = image.getPixelBytes();
+                int total = width * height;
+                for (int i = 0; i < total; i++) {
+                    buf.putInt(i * 4, net.minecraft.util.ARGB.toABGR(pixels[i]));
                 }
                 texture.upload();
             }

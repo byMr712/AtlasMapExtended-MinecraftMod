@@ -5,6 +5,10 @@ import org.webtrade.atlasmapextended.client.data.Marker;
 import org.webtrade.atlasmapextended.client.data.Region;
 import org.webtrade.atlasmapextended.client.data.Stroke;
 import org.webtrade.atlasmapextended.client.map.ChunkScanner;
+import org.webtrade.atlasmapextended.client.map.MapLayer;
+import org.webtrade.atlasmapextended.client.map.MapManager;
+import org.webtrade.atlasmapextended.client.map.MapSession;
+import org.webtrade.atlasmapextended.client.map.MapTile;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -208,6 +212,9 @@ public final class FramedMapMesher {
         // single-map 96 units flattened every tile bigger than ~2x2.
         float maxDepth = MAX_DEPTH * relief;
 
+        MapSession session = MapManager.live();
+        MapLayer layer = session == null ? null : session.layer(key.dimension().identifier().toString());
+
         for (int pz = 0; pz < FramedMapVolume.SIZE; pz++) {
             for (int px = 0; px < FramedMapVolume.SIZE; px++) {
                 int index = pz * FramedMapVolume.SIZE + px;
@@ -226,14 +233,27 @@ public final class FramedMapMesher {
                 // maps. Dividing by the map scale made large maps almost flat.
                 float height = Math.max(0, volume.surfaceY[index] - startY) * relief;
                 depth[index] = Math.min(maxDepth, height) + BASE_OFFSET;
-                int waterDepth = volume.water[index]
-                        ? Math.max(1, volume.waterDepth[index] & 0xFF) : 0;
-                colors[index] = ChunkScanner.papyrus(
-                        volume.rgb[index],
-                        volume.surfaceY[index],
-                        hn, hw,
-                        waterDepth,
-                        wx, wz);
+                int argb = 0;
+                if (layer != null) {
+                    MapTile mapTile = layer.getForRead(
+                            Math.floorDiv(wx, MapTile.SIZE), Math.floorDiv(wz, MapTile.SIZE));
+                    if (mapTile != null) {
+                        argb = mapTile.getPixel(
+                                Math.floorMod(wx, MapTile.SIZE), Math.floorMod(wz, MapTile.SIZE));
+                    }
+                }
+                if (argb != 0) {
+                    colors[index] = argb;
+                } else {
+                    int waterDepth = volume.water[index]
+                            ? Math.max(1, volume.waterDepth[index] & 0xFF) : 0;
+                    colors[index] = ChunkScanner.papyrus(
+                            volume.rgb[index],
+                            volume.surfaceY[index],
+                            hn, hw,
+                            waterDepth,
+                            wx, wz);
+                }
                 if (overlay != null) {
                     double cx = wx + scaleFactor * 0.5;
                     double cz = wz + scaleFactor * 0.5;
@@ -442,7 +462,7 @@ public final class FramedMapMesher {
                     float h01 = heights[(cz + 1) * stride + cx];
                     float h11 = heights[(cz + 1) * stride + cx + 1];
                     int color = colors[rep];
-                    if (cx == 0 && (textureMask & FramedMapConnections.TEX_LEFT) == 0) {
+                    if (cx == 0 && (div <= 1 || (textureMask & FramedMapConnections.TEX_LEFT) == 0)) {
                         quads.add(new Quad(
                                 x0, z1, 0.0f,
                                 x0, z0, 0.0f,
@@ -450,7 +470,7 @@ public final class FramedMapMesher {
                                 x0, z1, h01,
                                 shade(color, SIDE_SHADE)));
                     }
-                    if (cx + 1 == cells && (textureMask & FramedMapConnections.TEX_RIGHT) == 0) {
+                    if (cx + 1 == cells && (div <= 1 || (textureMask & FramedMapConnections.TEX_RIGHT) == 0)) {
                         quads.add(new Quad(
                                 x1, z0, 0.0f,
                                 x1, z1, 0.0f,
@@ -458,7 +478,7 @@ public final class FramedMapMesher {
                                 x1, z0, h10,
                                 shade(color, SIDE_SHADE)));
                     }
-                    if (cz == 0 && (textureMask & FramedMapConnections.TEX_TOP) == 0) {
+                    if (cz == 0 && (div <= 1 || (textureMask & FramedMapConnections.TEX_TOP) == 0)) {
                         quads.add(new Quad(
                                 x0, z0, 0.0f,
                                 x1, z0, 0.0f,
@@ -466,7 +486,7 @@ public final class FramedMapMesher {
                                 x0, z0, h00,
                                 shade(color, EDGE_SHADE)));
                     }
-                    if (cz + 1 == cells && (textureMask & FramedMapConnections.TEX_BOTTOM) == 0) {
+                    if (cz + 1 == cells && (div <= 1 || (textureMask & FramedMapConnections.TEX_BOTTOM) == 0)) {
                         quads.add(new Quad(
                                 x1, z1, 0.0f,
                                 x0, z1, 0.0f,
@@ -496,11 +516,8 @@ public final class FramedMapMesher {
     private static float seamDepth(FramedMapVolume source, FramedMapVolume tile, int startY, int div,
                                    int dstX0, int dstX1, int dstZ0, int dstZ1, int rotation,
                                    int px, int pz, int dx, int dz, float own, boolean internal) {
-        if (!internal) {
+        if (!internal || div <= 1) {
             return 0;
-        }
-        if (div <= 1) {
-            return own;
         }
         int rx = dstX0 + px * (dstX1 - dstX0) / FramedMapVolume.SIZE;
         int rz = dstZ0 + pz * (dstZ1 - dstZ0) / FramedMapVolume.SIZE;

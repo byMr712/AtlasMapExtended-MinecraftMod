@@ -1,6 +1,7 @@
 package org.webtrade.atlasmapextended.client.map;
 
 import com.mojang.blaze3d.platform.NativeImage;
+import net.minecraft.client.Minecraft;
 import org.webtrade.atlasmapextended.client.data.Storage;
 
 import java.io.IOException;
@@ -13,6 +14,7 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.Set;
 import java.util.stream.Stream;
 
@@ -25,9 +27,12 @@ public class MapLayer {
     public final String dim;
     private final String key;
     private final Path dir;
-    private final Map<Long, MapTile> tiles = new HashMap<>();
+    private final Map<Long, MapTile> tiles = new ConcurrentHashMap<>();
+    private volatile Long newestTile;
     private final Set<Long> onDisk = new HashSet<>();
     private final Set<Long> broken = new HashSet<>();
+    private final Set<Long> loading = new HashSet<>();
+    private volatile boolean closed;
 
     MapLayer(String worldId, String dim, Path dir) {
         this.dim = dim;
@@ -89,21 +94,8 @@ public class MapLayer {
             return null;
         }
         // Anchor on the freshest tile: that is where the player was last.
-        long anchor = keys.iterator().next();
-        long newest = Long.MIN_VALUE;
-        for (long k : keys) {
-            long stamp = 0L;
-            if (onDisk.contains(k)) {
-                try {
-                    stamp = Files.getLastModifiedTime(tileFile(k)).toMillis();
-                } catch (IOException ignored) {
-                }
-            }
-            if (stamp > newest) {
-                newest = stamp;
-                anchor = k;
-            }
-        }
+        Long cached = newestTile;
+        long anchor = (cached != null && keys.contains(cached)) ? cached : keys.iterator().next();
         int ax = (int) (anchor >> 32);
         int az = (int) anchor;
         // Average the tiles around the anchor so the view lands in the middle of that area,
@@ -140,12 +132,15 @@ public class MapLayer {
             return t;
         }
         if (onDisk.contains(k) && !broken.contains(k)) {
-            return load(rx, rz);
+            if (com.mojang.blaze3d.systems.RenderSystem.isOnRenderThread()) {
+                return load(rx, rz);
+            }
+            loadAsync(rx, rz);
         }
         return null;
     }
 
-    /** Returns the tile for rendering, loading it from disk if the per-frame budget allows. */
+    /** Returns the tile for rendering, streaming it from disk asynchronously when not cached. */
     public MapTile getForRender(int rx, int rz) {
         long k = pack(rx, rz);
         MapTile t = tiles.get(k);
@@ -153,11 +148,49 @@ public class MapLayer {
             t.touch();
             return t;
         }
-        if (onDisk.contains(k) && !broken.contains(k) && frameLoads < LOADS_PER_FRAME) {
-            frameLoads++;
-            return load(rx, rz);
+        if (onDisk.contains(k) && !broken.contains(k) && !loading.contains(k)) {
+            loadAsync(rx, rz);
         }
         return null;
+    }
+
+    private void loadAsync(int rx, int rz) {
+        long k = pack(rx, rz);
+        if (!loading.add(k)) {
+            return;
+        }
+        Path file = dir.resolve(rx + "_" + rz + ".png");
+        Storage.IO.execute(() -> {
+            NativeImage img = null;
+            try (InputStream in = Files.newInputStream(file)) {
+                img = NativeImage.read(in);
+                if (img.getWidth() != MapTile.SIZE || img.getHeight() != MapTile.SIZE || img.format() != NativeImage.Format.RGBA) {
+                    img.close();
+                    img = null;
+                }
+            } catch (IOException e) {
+                Storage.LOG.warn("Failed to load map tile {}", file, e);
+            }
+            final NativeImage loaded = img;
+            Minecraft.getInstance().execute(() -> {
+                try {
+                    if (closed || tiles.containsKey(k)) {
+                        if (loaded != null) {
+                            loaded.close();
+                        }
+                        return;
+                    }
+                    if (loaded == null) {
+                        broken.add(k);
+                        return;
+                    }
+                    MapTile tile = new MapTile(key, rx, rz, loaded);
+                    tiles.put(k, tile);
+                } finally {
+                    loading.remove(k);
+                }
+            });
+        });
     }
 
     /** Returns the tile for writing, creating it (or loading it) if needed. */
@@ -171,6 +204,7 @@ public class MapLayer {
             t = new MapTile(key, rx, rz, new NativeImage(MapTile.SIZE, MapTile.SIZE, true));
             tiles.put(k, t);
         }
+        newestTile = k;
         t.touch();
         return t;
     }
@@ -207,6 +241,7 @@ public class MapLayer {
             if (t.diskDirty) {
                 t.diskDirty = false;
                 NativeImage copy = t.snapshot();
+                newestTile = pack(t.rx, t.rz);
                 Path file = dir.resolve(t.rx + "_" + t.rz + ".png");
                 onDisk.add(pack(t.rx, t.rz));
                 Storage.IO.execute(() -> {
@@ -239,6 +274,8 @@ public class MapLayer {
     }
 
     public void close() {
+        closed = true;
+        loading.clear();
         saveDirty();
         tiles.values().forEach(MapTile::release);
         tiles.clear();

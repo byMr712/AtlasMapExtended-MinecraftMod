@@ -14,6 +14,7 @@ import net.minecraft.world.level.saveddata.maps.MapItemSavedData;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.ModifyArg;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.joml.Matrix4f;
@@ -81,16 +82,10 @@ public class ItemFrameRendererMixin {
         boolean hide3D = ModConfig.get().framedMaps3D
                 && context != null && !context.suppress3D();
         if (context != null && (context.hideFrame() || hide3D)) {
-            // In 3D the rim would float above the relief and can occlude the
-            // relief's side walls. A mega-map is also borderless in 2D; only
-            // normal groups keep the thin outer rim.
-            if (!ModConfig.get().framedMaps3D && context.tileDiv() <= 1) {
-                FramedMapConnections.renderOuterFrame(
-                        pose, collector, context.worldMask(), context.glow(), context.light());
-            }
             return;
         }
-        model.submitWithZOffset(pose, collector, light, overlay, outlineColor);
+        int frameLight = context != null && context.glow() ? 15728880 : light;
+        model.submitWithZOffset(pose, collector, frameLight, overlay, outlineColor);
     }
 
     @Inject(
@@ -115,31 +110,32 @@ public class ItemFrameRendererMixin {
         MapItemSavedData data = level.getMapData(state.mapId);
         if (data != null) {
             int tileDiv = FramedMapConnections.currentTileDiv();
-            if (ModConfig.get().framedMaps3D
-                    && tileDiv <= 1
-                    && state.direction == Direction.UP) {
-                // A lone floor map keeps the orientation chosen when it was
-                // placed, so walking around it does not spin the picture.
-                // The pose is already translated by -64,-64, so the centre
-                // compensation keeps the map inside its frame.
-                int steps = FramedMapConnections.currentTileRotation();
-                if (steps != 0) {
-                    pose.translate(64.0f, 64.0f, 0.0f);
-                    pose.mulPose(new Matrix4f().rotationZ((float) Math.toRadians(-steps * 90.0f)));
-                    pose.translate(-64.0f, -64.0f, 0.0f);
-                }
-            }
             if (tileDiv > 1) {
                 state.mapRenderState.decorations.clear();
             }
+            boolean suppress3D = FramedMapConnections.currentSuppress3D();
+            boolean show2D = !ModConfig.get().framedMaps3D || suppress3D;
             var texture = HeldMapTextures.getFramed(
                     state.mapId, data, FramedMapConnections.currentTextureMask(),
                     tileDiv, FramedMapConnections.currentTileCol(), FramedMapConnections.currentTileRow(),
-                    FramedMapConnections.currentTileRotation());
+                    FramedMapConnections.currentTileRotation(), show2D);
             if (texture != null) {
                 state.mapRenderState.texture = texture;
             }
         }
+    }
+
+    @ModifyArg(
+            method = "submit(Lnet/minecraft/client/renderer/entity/state/ItemFrameRenderState;Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/SubmitNodeCollector;Lnet/minecraft/client/renderer/state/level/CameraRenderState;)V",
+            at = @At(value = "INVOKE",
+                    target = "Lnet/minecraft/client/renderer/MapRenderer;render(Lnet/minecraft/client/renderer/state/MapRenderState;Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/SubmitNodeCollector;ZI)V"),
+            index = 4)
+    private int atlasmapextended$mapLight(int light) {
+        FramedMapConnections.Context context = FramedMapConnections.context();
+        if (context != null && context.glow()) {
+            return 15728850;
+        }
+        return light;
     }
 
     @Inject(

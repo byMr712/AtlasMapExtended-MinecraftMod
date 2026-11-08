@@ -64,19 +64,29 @@ public final class HeldMapTextures {
 
     /** Frame base: with 3D disabled it also gets the 2D snapshot overlay. */
     public static Identifier getFramed(MapId mapId, MapItemSavedData data) {
-        return getFramed(mapId, data, 0, 1, 0, 0, 0);
+        return getFramed(mapId, data, 0, 1, 0, 0, 0, false, !ModConfig.get().framedMaps3D);
     }
 
     public static Identifier getFramed(MapId mapId, MapItemSavedData data, int textureMask) {
-        return getFramed(mapId, data, textureMask, 1, 0, 0, 0);
+        return getFramed(mapId, data, textureMask, 1, 0, 0, 0, false, !ModConfig.get().framedMaps3D);
     }
 
     public static Identifier getFramed(MapId mapId, MapItemSavedData data, int textureMask,
                                        int tileDiv, int tileCol, int tileRow, int tileRotation) {
-        // A framed map has no paper margin: its content must reach the edge so
-        // neighbouring frames form one picture. A held map keeps the margin.
-        return get(mapId, data, !ModConfig.get().framedMaps3D, textureMask, false,
+        return getFramed(mapId, data, textureMask, tileDiv, tileCol, tileRow, tileRotation, false, !ModConfig.get().framedMaps3D);
+    }
+
+    public static Identifier getFramed(MapId mapId, MapItemSavedData data, int textureMask,
+                                       int tileDiv, int tileCol, int tileRow, int tileRotation,
+                                       boolean withOverlay) {
+        return get(mapId, data, withOverlay, textureMask, false,
                 tileDiv, tileCol, tileRow, tileRotation);
+    }
+
+    public static Identifier getFramed(MapId mapId, MapItemSavedData data, int textureMask,
+                                       int tileDiv, int tileCol, int tileRow, int tileRotation,
+                                       boolean glow, boolean withOverlay) {
+        return getFramed(mapId, data, textureMask, tileDiv, tileCol, tileRow, tileRotation, withOverlay);
     }
 
     private static Identifier get(MapId mapId, MapItemSavedData data, boolean withOverlay,
@@ -263,7 +273,8 @@ public final class HeldMapTextures {
                 if (left || right || top || bottom) {
                     boolean line = (left && x == 1) || (right && x == SIZE - 2)
                             || (top && y == 1) || (bottom && y == SIZE - 2);
-                    image.setPixelABGR(x, y, abgr(line ? INK : PAPER));
+                    int c = line ? INK : PAPER;
+                    image.setPixelABGR(x, y, abgr(c));
                 }
             }
         }
@@ -272,22 +283,24 @@ public final class HeldMapTextures {
     private static void paintOverlay(NativeImage image, FramedMapOverlay overlay) {
         int scaleFactor = 1 << overlay.scale;
         for (Region region : overlay.regions) {
+            int color = region.color;
             double[] pts = region.pts;
             for (int i = 0; i + 3 < pts.length; i += 2) {
                 line(image, px(overlay, scaleFactor, pts[i]), pz(overlay, scaleFactor, pts[i + 1]),
-                        px(overlay, scaleFactor, pts[i + 2]), pz(overlay, scaleFactor, pts[i + 3]), 1, region.color);
+                        px(overlay, scaleFactor, pts[i + 2]), pz(overlay, scaleFactor, pts[i + 3]), 1, color);
             }
             if (pts.length >= 4) {
                 line(image, px(overlay, scaleFactor, pts[pts.length - 2]), pz(overlay, scaleFactor, pts[pts.length - 1]),
-                        px(overlay, scaleFactor, pts[0]), pz(overlay, scaleFactor, pts[1]), 1, region.color);
+                        px(overlay, scaleFactor, pts[0]), pz(overlay, scaleFactor, pts[1]), 1, color);
             }
         }
 
         for (Stroke stroke : overlay.strokes) {
             int width = Math.max(1, Math.min(3, Math.round(stroke.width * 0.6f)));
+            int color = stroke.color;
             for (int i = 0; i + 3 < stroke.pts.length; i += 2) {
                 line(image, px(overlay, scaleFactor, stroke.pts[i]), pz(overlay, scaleFactor, stroke.pts[i + 1]),
-                        px(overlay, scaleFactor, stroke.pts[i + 2]), pz(overlay, scaleFactor, stroke.pts[i + 3]), width, stroke.color);
+                        px(overlay, scaleFactor, stroke.pts[i + 2]), pz(overlay, scaleFactor, stroke.pts[i + 3]), width, color);
             }
         }
 

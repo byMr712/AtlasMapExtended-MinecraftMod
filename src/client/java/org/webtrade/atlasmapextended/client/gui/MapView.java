@@ -57,6 +57,7 @@ public class MapView {
         return a.length >= n ? a : new boolean[Math.max(n, a.length * 2)];
     }
 
+
     public void setRect(int x, int y, int w, int h) {
         this.x = x;
         this.y = y;
@@ -355,7 +356,24 @@ public class MapView {
      * texture and blitted once: the cost no longer depends on the number of regions.
      */
     public void drawRegions(GuiGraphicsExtractor g, Font font, List<Region> regions, String dim, boolean labels, String selectedId) {
-        if (w <= 0 || h <= 0) {
+        if (w <= 0 || h <= 0 || regions == null || regions.isEmpty()) {
+            return;
+        }
+        boolean any = false;
+        for (Region r : regions) {
+            if (!r.hidden && r.dim.equals(dim) && r.pointCount() >= 3) {
+                double[] b = r.bounds();
+                float minX = Math.min(sx(b[0]), sx(b[1]));
+                float maxX = Math.max(sx(b[0]), sx(b[1]));
+                float minY = Math.min(sy(b[2]), sy(b[3]));
+                float maxY = Math.max(sy(b[2]), sy(b[3]));
+                if (maxX >= x && minX <= x + w && maxY >= y && minY <= y + h) {
+                    any = true;
+                    break;
+                }
+            }
+        }
+        if (!any) {
             return;
         }
         long start = System.nanoTime();
@@ -376,8 +394,8 @@ public class MapView {
     /** Changes whenever the region layer has to be rasterised again. */
     private long regionKey(List<Region> regions, String dim, String selectedId) {
         long h = 1125899906842597L;
-        h = 31 * h + Double.doubleToLongBits(cx);
-        h = 31 * h + Double.doubleToLongBits(cz);
+        h = 31 * h + Math.round(cx * zoom);
+        h = 31 * h + Math.round(cz * zoom);
         h = 31 * h + Float.floatToIntBits(zoom);
         h = 31 * h + this.x * 1000003L + this.y;
         h = 31 * h + this.w * 31L + this.h;
