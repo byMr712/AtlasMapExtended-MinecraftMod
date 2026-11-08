@@ -17,7 +17,8 @@ import java.util.List;
 public final class FramedMapMesher {
     private static final int MAX_QUADS = 200_000;
     private static final float MAX_DEPTH = 96.0f;
-    private static final float BASE_OFFSET = 0.05f;
+    /** Keeps the relief clearly in front of the flat map and avoids z-fighting. */
+    private static final float BASE_OFFSET = 0.5f;
     private static final float SIDE_SHADE = 0.78f;
     private static final float EDGE_SHADE = 0.68f;
     /** How far above the surface marker icons hover, in map pixels. */
@@ -53,7 +54,7 @@ public final class FramedMapMesher {
     }
 
     public static FramedMapMesh build(FramedMapVolume volume, FramedMapKey key, int startY,
-                                      FramedMapOverlay overlay) {
+                                      FramedMapOverlay overlay, int textureMask) {
         float[] depth = new float[FramedMapVolume.COLUMNS];
         int[] colors = new int[FramedMapVolume.COLUMNS];
         int scaleFactor = key.scaleFactor();
@@ -61,14 +62,16 @@ public final class FramedMapMesher {
         for (int pz = 0; pz < FramedMapVolume.SIZE; pz++) {
             for (int px = 0; px < FramedMapVolume.SIZE; px++) {
                 int index = pz * FramedMapVolume.SIZE + px;
-                if (!volume.valid[index] || volume.surfaceY[index] <= startY) {
+                if (!volume.valid[index]) {
                     continue;
                 }
                 int hn = neighbourHeight(volume, px, pz - 1, volume.surfaceY[index]);
                 int hw = neighbourHeight(volume, px - 1, pz, volume.surfaceY[index]);
                 int wx = key.originX() + px * scaleFactor;
                 int wz = key.originZ() + pz * scaleFactor;
-                float relief = (volume.surfaceY[index] - startY) * (1.0f / scaleFactor);
+                // One map pixel is one terrain block tall even on zoomed-out
+                // maps. Dividing by the map scale made large maps almost flat.
+                float relief = Math.max(0, volume.surfaceY[index] - startY);
                 depth[index] = Math.min(MAX_DEPTH, relief) + BASE_OFFSET;
                 int waterDepth = volume.water[index]
                         ? Math.max(1, volume.waterDepth[index] & 0xFF) : 0;
@@ -138,22 +141,28 @@ public final class FramedMapMesher {
                 int wz = key.originZ() + pz * scaleFactor;
                 int surfaceColor = colors[index];
 
-                float east = px + 1 < FramedMapVolume.SIZE ? depth[index + 1] : 0;
+                // Neighbouring maps continue the surface, so their shared edge
+                // must not get a cut face between the two frames.
+                float east = px + 1 < FramedMapVolume.SIZE ? depth[index + 1]
+                        : (textureMask & FramedMapConnections.TEX_RIGHT) != 0 ? d : 0;
                 if (east < d) {
                     addWallEast(quads, volume, index, scaleFactor, wx, wz,
                             px + 1, pz, east, d, surfaceColor);
                 }
-                float west = px > 0 ? depth[index - 1] : 0;
+                float west = px > 0 ? depth[index - 1]
+                        : (textureMask & FramedMapConnections.TEX_LEFT) != 0 ? d : 0;
                 if (west < d) {
                     addWallWest(quads, volume, index, scaleFactor, wx, wz,
                             px, pz, west, d, surfaceColor);
                 }
-                float south = pz + 1 < FramedMapVolume.SIZE ? depth[index + FramedMapVolume.SIZE] : 0;
+                float south = pz + 1 < FramedMapVolume.SIZE ? depth[index + FramedMapVolume.SIZE]
+                        : (textureMask & FramedMapConnections.TEX_BOTTOM) != 0 ? d : 0;
                 if (south < d) {
                     addWallSouth(quads, volume, index, scaleFactor, wx, wz,
                             px, pz + 1, south, d, surfaceColor);
                 }
-                float north = pz > 0 ? depth[index - FramedMapVolume.SIZE] : 0;
+                float north = pz > 0 ? depth[index - FramedMapVolume.SIZE]
+                        : (textureMask & FramedMapConnections.TEX_TOP) != 0 ? d : 0;
                 if (north < d) {
                     addWallNorth(quads, volume, index, scaleFactor, wx, wz,
                             px, pz, north, d, surfaceColor);
@@ -218,7 +227,7 @@ public final class FramedMapMesher {
     private static int wallColor(FramedMapVolume volume, int index, int scaleFactor,
                                  int wx, int wz, float topDepth, float midDepth,
                                  int surfaceColor, float factor) {
-        int below = Math.round((topDepth - midDepth) * scaleFactor);
+        int below = Math.round(topDepth - midDepth);
         if (below <= 0) {
             return shade(surfaceColor, factor);
         }
@@ -284,8 +293,8 @@ public final class FramedMapMesher {
         if (!volume.valid[i0] || !volume.valid[i1]) {
             return;
         }
-        float d0 = Math.max(0.3f, (volume.surfaceY[i0] - startY) * (1.0f / scaleFactor)) + 1.5f;
-        float d1 = Math.max(0.3f, (volume.surfaceY[i1] - startY) * (1.0f / scaleFactor)) + 1.5f;
+        float d0 = Math.max(0.3f, volume.surfaceY[i0] - startY) + 1.5f;
+        float d1 = Math.max(0.3f, volume.surfaceY[i1] - startY) + 1.5f;
         lines.add(new Line(px0, pz0, Math.min(MAX_DEPTH, d0),
                 px1, pz1, Math.min(MAX_DEPTH, d1), color));
     }
