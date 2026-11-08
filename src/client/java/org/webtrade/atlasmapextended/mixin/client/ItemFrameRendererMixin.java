@@ -69,9 +69,12 @@ public class ItemFrameRendererMixin {
             int outlineColor
     ) {
         FramedMapConnections.Context context = FramedMapConnections.context();
-        if (context != null && context.hideFrame()) {
-            // In 3D the rim would float above the relief. A mega-map is also
-            // borderless in 2D; only normal groups keep the thin outer rim.
+        boolean hide3D = ModConfig.get().framedMaps3D
+                && context != null && !context.suppress3D();
+        if (context != null && (context.hideFrame() || hide3D)) {
+            // In 3D the rim would float above the relief and can occlude the
+            // relief's side walls. A mega-map is also borderless in 2D; only
+            // normal groups keep the thin outer rim.
             if (!ModConfig.get().framedMaps3D && context.tileDiv() <= 1) {
                 FramedMapConnections.renderOuterFrame(
                         pose, collector, context.worldMask(), context.glow(), context.light());
