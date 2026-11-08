@@ -9,6 +9,7 @@ import net.minecraft.client.renderer.entity.state.ItemFrameRenderState;
 import net.minecraft.client.renderer.rendertype.RenderTypes;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.level.saveddata.maps.MapItemSavedData;
+import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;
 import org.webtrade.atlasmapextended.client.data.ModConfig;
 import org.webtrade.atlasmapextended.client.gui.Paper;
@@ -58,6 +59,9 @@ public final class FramedMapRenderer {
         }
 
         int div = Math.max(1, tileDiv);
+        if (tooSmallOnScreen(state, div, mc)) {
+            return;
+        }
         int rotation = megatileRotation(div, tileRotation);
         FramedMapMesh mesh = div > 1
                 ? FramedMapCache.getGroup(level, state.mapId, data, div, rotation)
@@ -137,6 +141,28 @@ public final class FramedMapRenderer {
 
     private static int megatileRotation(int div, int rotation) {
         return div > 1 ? rotation & 3 : 0;
+    }
+
+    /**
+     * Far/small maps keep their 2D base but skip the relief mesh. At less
+     * than a few pixels the relief cannot be seen anyway.
+     */
+    private static boolean tooSmallOnScreen(ItemFrameRenderState state, int div, Minecraft mc) {
+        if (mc.player == null) {
+            return false;
+        }
+        Vec3 eye = mc.player.getEyePosition();
+        double dx = state.x - eye.x;
+        double dy = state.y - eye.y;
+        double dz = state.z - eye.z;
+        double distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        if (distance < 1.0) {
+            return false;
+        }
+        double fov = Math.toRadians(mc.options.fov().get());
+        double pixels = mc.getWindow().getHeight() * div
+                / (2.0 * distance * Math.tan(fov * 0.5));
+        return pixels < 8.0;
     }
 
     private static void logOnce(String key, String message, Object... args) {
