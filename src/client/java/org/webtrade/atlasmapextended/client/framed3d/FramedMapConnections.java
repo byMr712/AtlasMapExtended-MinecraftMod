@@ -73,7 +73,8 @@ public final class FramedMapConnections {
     public record Context(int frameMask, int textureMask, int worldMask,
                           int tileDiv, int tileCol, int tileRow, int tileRotation,
                           boolean glow, int light, boolean hideFrame,
-                          boolean suppress3D, boolean active3D, boolean groupLeader) {
+                          boolean suppress3D, boolean active3D, boolean groupLeader,
+                          boolean observed, Vec3 center) {
     }
 
     private record Key(long pos, int direction, int mapId, int rotation, ResourceKey<Level> dimension) {
@@ -81,7 +82,7 @@ public final class FramedMapConnections {
 
     private record Cached(long tick, int frameMask, int textureMask, int worldMask,
                           int tileDiv, int tileCol, int tileRow, int singleRotation,
-                          boolean suppress3D, GroupKey group) {
+                          boolean suppress3D, GroupKey group, Vec3 center) {
     }
 
     private record SingleKey(long pos, int direction, int mapId, ResourceKey<Level> dimension) {
@@ -173,6 +174,44 @@ public final class FramedMapConnections {
     /** The tile that submits the single shared mega-group mesh. */
     public static boolean currentGroupLeader() {
         return current == null || current.groupLeader();
+    }
+
+    /** True when the player is aiming at this map or mega group. */
+    public static boolean currentObserved() {
+        return current != null && current.observed();
+    }
+
+    /** World centre of the map or mega group, used for gaze and distance LOD. */
+    public static Vec3 currentCenter() {
+        return current != null ? current.center() : null;
+    }
+
+    /**
+     * Foveal LOD: a map under the crosshair (within a one-block margin) keeps
+     * full detail even when it is far away. Everything else may use the
+     * coarse distance LOD. For a mega group the target is the group centre
+     * and the margin grows with the group size.
+     */
+    private static boolean looksAt(CameraRenderState camera, Vec3 target, int div) {
+        if (camera == null || camera.pos == null || target == null) {
+            return false;
+        }
+        Vec3 eye = camera.pos;
+        double dx = target.x - eye.x;
+        double dy = target.y - eye.y;
+        double dz = target.z - eye.z;
+        double distanceSq = dx * dx + dy * dy + dz * dz;
+        if (distanceSq < 1.0) {
+            return true;
+        }
+        Vec3 look = Vec3.directionFromRotation(camera.xRot, camera.yRot);
+        double along = dx * look.x + dy * look.y + dz * look.z;
+        if (along <= 0.0) {
+            return false;
+        }
+        double perpendicularSq = distanceSq - along * along;
+        double radius = div * 0.5 + 1.0;
+        return perpendicularSq <= radius * radius;
     }
 
     private static boolean isGroupLeader(GroupKey group, BlockPos pos, long tick) {
@@ -286,9 +325,23 @@ public final class FramedMapConnections {
             if (!mega && state.direction == Direction.UP) {
                 singleRotation = singleRotation(level, pos, state, data, camera);
             }
+            // A mega group is one big map; aim LOD at its geometric centre,
+            // not at whichever tile happens to submit the shared mesh.
+            double centerX = pos.getX() + 0.5;
+            double centerY = pos.getY() + 0.5;
+            double centerZ = pos.getZ() + 0.5;
+            if (mega && info != null) {
+                double half = (tile.div() - 1) * 0.5;
+                double dc = half - tile.col();
+                double dr = half - tile.row();
+                centerX += dc * info.imgRight.getStepX() + dr * info.imgDown.getStepX();
+                centerY += dc * info.imgRight.getStepY() + dr * info.imgDown.getStepY();
+                centerZ += dc * info.imgRight.getStepZ() + dr * info.imgDown.getStepZ();
+            }
+            Vec3 center = new Vec3(centerX, centerY, centerZ);
             cached = new Cached(tick, frameMask, textureMask, worldMask,
                     tile.div(), tile.col(), tile.row(), singleRotation,
-                    tile.suppress3D(), tile.group());
+                    tile.suppress3D(), tile.group(), center);
             if (CACHE.size() > MAX_CACHE) {
                 CACHE.clear();
             }
@@ -321,10 +374,11 @@ public final class FramedMapConnections {
         boolean active3D = front && !suppress;
         boolean groupLeader = active3D
                 && (cached.tileDiv() <= 1 || isGroupLeader(cached.group(), pos, tick));
+        boolean observed = front && looksAt(camera, cached.center(), cached.tileDiv());
         current = new Context(frameMask, textureMask, worldMask,
                 cached.tileDiv(), cached.tileCol(), cached.tileRow(), tileRotation,
                 state.isGlowFrame, light, worldMask != 0, cached.suppress3D(), active3D,
-                groupLeader);
+                groupLeader, observed, cached.center());
     }
 
     public static void end() {
