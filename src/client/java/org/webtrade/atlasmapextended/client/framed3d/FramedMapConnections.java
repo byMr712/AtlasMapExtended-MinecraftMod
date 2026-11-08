@@ -383,7 +383,7 @@ public final class FramedMapConnections {
             state.rotation = 0;
         }
 
-        boolean front = camera == null || camera.pos == null || frontSide(camera.pos, pos, state.direction);
+        boolean front = camera == null || camera.pos == null || frontSide(camera.pos, state, cached.center());
         int frameMask = front ? cached.frameMask() : 0;
         int textureMask = front ? cached.textureMask() : 0;
         int worldMask = front ? cached.worldMask() : 0;
@@ -431,11 +431,19 @@ public final class FramedMapConnections {
         current = null;
     }
 
-    private static boolean frontSide(Vec3 camera, BlockPos pos, Direction direction) {
-        double dx = camera.x - (pos.getX() + 0.5);
-        double dy = camera.y - (pos.getY() + 0.5);
-        double dz = camera.z - (pos.getZ() + 0.5);
-        return dx * direction.getStepX() + dy * direction.getStepY() + dz * direction.getStepZ() >= 0.0;
+    private static boolean frontSide(Vec3 camera, ItemFrameRenderState state, Vec3 center) {
+        if (camera == null || state.direction == null) {
+            return true;
+        }
+        Direction dir = state.direction;
+        double sx = center != null ? center.x : state.x;
+        double sy = center != null ? center.y : state.y;
+        double sz = center != null ? center.z : state.z;
+        double dx = camera.x - sx;
+        double dy = camera.y - sy;
+        double dz = camera.z - sz;
+        double dot = dx * dir.getStepX() + dy * dir.getStepY() + dz * dir.getStepZ();
+        return dot >= -1.0;
     }
 
     private static int computeFrameMask(ClientLevel level, BlockPos pos, ItemFrameRenderState state,
