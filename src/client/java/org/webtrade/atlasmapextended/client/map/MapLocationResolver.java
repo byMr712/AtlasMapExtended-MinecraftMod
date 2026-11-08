@@ -1,6 +1,7 @@
 package org.webtrade.atlasmapextended.client.map;
 
-import com.google.gson.reflect.TypeToken;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
@@ -17,7 +18,6 @@ import net.minecraft.world.level.saveddata.maps.MapItemSavedData;
 import org.webtrade.atlasmapextended.client.data.Storage;
 import org.webtrade.atlasmapextended.mixin.client.MapItemSavedDataAccessor;
 
-import java.lang.reflect.Type;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
@@ -30,10 +30,61 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class MapLocationResolver {
 
-    private static final Map<String, int[]> KNOWN_CENTERS = new ConcurrentHashMap<>();
-    private static final Type MAP_TYPE = new TypeToken<Map<String, int[]>>() {}.getType();
+    private static final Map<String, CenterEntry> KNOWN_CENTERS = new ConcurrentHashMap<>();
     private static Path loadedPath = null;
     private static boolean dirty = false;
+
+    /**
+     * Precision of the source. A more precise source is allowed to overwrite
+     * a cached approximate center (for example a player marker over a frame
+     * guess), while an approximate source never replaces a precise one.
+     */
+    private enum Source {
+        FRAME(1),
+        HELD(2),
+        // Old files have no source; do not let a frame/held guess replace
+        // them, but a real player marker or server value may.
+        LEGACY(2),
+        DECORATION(3),
+        SERVER(4);
+
+        private final int precision;
+
+        Source(int precision) {
+            this.precision = precision;
+        }
+
+        int precision() {
+            return precision;
+        }
+
+        static Source from(String value) {
+            if (value != null) {
+                for (Source source : values()) {
+                    if (source.name().equalsIgnoreCase(value)) {
+                        return source;
+                    }
+                }
+            }
+            return LEGACY;
+        }
+    }
+
+    /** Public fields so Gson can persist the source together with the center. */
+    private static final class CenterEntry {
+        public int x;
+        public int z;
+        public Source source;
+
+        CenterEntry() {
+        }
+
+        CenterEntry(int x, int z, Source source) {
+            this.x = x;
+            this.z = z;
+            this.source = source;
+        }
+    }
 
     private MapLocationResolver() {
     }
@@ -53,9 +104,34 @@ public final class MapLocationResolver {
         }
         loadedPath = path;
         KNOWN_CENTERS.clear();
-        Map<String, int[]> loaded = Storage.readJson(path, MAP_TYPE, null);
-        if (loaded != null) {
-            KNOWN_CENTERS.putAll(loaded);
+        JsonObject root = Storage.readJson(path, JsonObject.class, null);
+        if (root == null) {
+            return;
+        }
+        for (Map.Entry<String, JsonElement> entry : root.entrySet()) {
+            JsonElement value = entry.getValue();
+            int x;
+            int z;
+            Source source = Source.LEGACY;
+            if (value.isJsonArray()) {
+                // Old format: [x, z]
+                var array = value.getAsJsonArray();
+                if (array.size() < 2) {
+                    continue;
+                }
+                x = array.get(0).getAsInt();
+                z = array.get(1).getAsInt();
+            } else if (value.isJsonObject()) {
+                JsonObject object = value.getAsJsonObject();
+                x = object.has("x") ? object.get("x").getAsInt() : 0;
+                z = object.has("z") ? object.get("z").getAsInt() : 0;
+                if (object.has("source")) {
+                    source = Source.from(object.get("source").getAsString());
+                }
+            } else {
+                continue;
+            }
+            KNOWN_CENTERS.put(entry.getKey(), new CenterEntry(x, z, source));
         }
     }
 
@@ -80,10 +156,7 @@ public final class MapLocationResolver {
 
         String dim = data.dimension.identifier().toString();
         String mapKey = key(mapId, dim);
-        int[] cached = KNOWN_CENTERS.get(mapKey);
-
-        int cx;
-        int cz;
+        CenterEntry cached = KNOWN_CENTERS.get(mapKey);
 
         // 1. Singleplayer authoritative server data
         MinecraftServer server = Minecraft.getInstance().getSingleplayerServer();
@@ -92,59 +165,62 @@ public final class MapLocationResolver {
             if (serverLevel != null) {
                 MapItemSavedData serverData = serverLevel.getMapData(mapId);
                 if (serverData != null) {
-                    cx = serverData.centerX;
-                    cz = serverData.centerZ;
-                    apply(data, mapKey, cx, cz, cached);
+                    apply(data, mapKey, serverData.centerX, serverData.centerZ, cached, Source.SERVER);
                     return;
                 }
             }
         }
 
-        // 2. Previously cached center
-        if (cached != null) {
-            apply(data, mapKey, cached[0], cached[1], cached);
-            return;
-        }
-
-        // 3. Estimate from player decoration if player is on this map
         LocalPlayer player = Minecraft.getInstance().player;
         int scaleFactor = 1 << data.scale;
-        int gridSize = 128 * scaleFactor;
-
         if (player != null && data.dimension.equals(player.level().dimension())) {
-            for (MapDecoration dec : data.getDecorations()) {
-                if (dec.type().equals(MapDecorationTypes.PLAYER)) {
-                    if (dec.x() > -63 && dec.x() < 63 && dec.y() > -63 && dec.y() < 63) {
-                        double approxX = player.getX() - (dec.x() / 2.0) * scaleFactor;
-                        double approxZ = player.getZ() - (dec.y() / 2.0) * scaleFactor;
-                        cx = align(approxX, data.scale);
-                        cz = align(approxZ, data.scale);
-                        apply(data, mapKey, cx, cz, cached);
-                        return;
+            // 2. A player marker is a precise estimate and may replace a
+            //    cached frame/held guess.
+            for (MapDecoration decoration : data.getDecorations()) {
+                if (decoration.type().equals(MapDecorationTypes.PLAYER)) {
+                    if (decoration.x() > -63 && decoration.x() < 63
+                            && decoration.y() > -63 && decoration.y() < 63) {
+                        double approxX = player.getX() - (decoration.x() / 2.0) * scaleFactor;
+                        double approxZ = player.getZ() - (decoration.y() / 2.0) * scaleFactor;
+                        int cx = align(approxX, data.scale);
+                        int cz = align(approxZ, data.scale);
+                        if (cached == null || Source.DECORATION.precision() > cached.source.precision()) {
+                            apply(data, mapKey, cx, cz, cached, Source.DECORATION);
+                            return;
+                        }
+                        break;
                     }
                 }
             }
 
-            // 4. If player holds this map right now, center around player
-            if (isHeld(player, mapId)) {
-                cx = align(player.getX(), data.scale);
-                cz = align(player.getZ(), data.scale);
-                apply(data, mapKey, cx, cz, cached);
+            // 3. Held map: the player is probably on/near it, but this stays
+            //    a fallback below a real marker.
+            if (isHeld(player, mapId)
+                    && (cached == null || Source.HELD.precision() > cached.source.precision())) {
+                int cx = align(player.getX(), data.scale);
+                int cz = align(player.getZ(), data.scale);
+                apply(data, mapKey, cx, cz, cached, Source.HELD);
                 return;
             }
         }
 
-        // 5. If rendered in an item frame, center around the frame
+        // 4. Previously cached center (already the best available).
+        if (cached != null) {
+            apply(data, mapKey, cached.x, cached.z, cached, cached.source);
+            return;
+        }
+
+        // 5. Frame position: the last resort when nothing anchors the map.
         if (framePos != null) {
-            cx = align(framePos.getX(), data.scale);
-            cz = align(framePos.getZ(), data.scale);
-            apply(data, mapKey, cx, cz, cached);
+            int cx = align(framePos.getX(), data.scale);
+            int cz = align(framePos.getZ(), data.scale);
+            apply(data, mapKey, cx, cz, null, Source.FRAME);
             return;
         }
 
         // 6. Keep whatever is already in data (or default)
         if (data.centerX != 0 || data.centerZ != 0) {
-            KNOWN_CENTERS.put(mapKey, new int[]{data.centerX, data.centerZ});
+            KNOWN_CENTERS.put(mapKey, new CenterEntry(data.centerX, data.centerZ, Source.LEGACY));
             dirty = true;
             save();
         }
@@ -156,13 +232,20 @@ public final class MapLocationResolver {
         return j * i + i / 2 - 64;
     }
 
-    private static void apply(MapItemSavedData data, String mapKey, int cx, int cz, int[] cached) {
+    private static void apply(MapItemSavedData data, String mapKey, int cx, int cz,
+                              CenterEntry cached, Source source) {
+        if (cached != null && cached.source.precision() > source.precision()) {
+            // Never replace a more precise cached position with a guess.
+            cx = cached.x;
+            cz = cached.z;
+            source = cached.source;
+        }
         if (data.centerX != cx || data.centerZ != cz) {
             ((MapItemSavedDataAccessor) data).atlasmapextended$setCenterX(cx);
             ((MapItemSavedDataAccessor) data).atlasmapextended$setCenterZ(cz);
         }
-        if (cached == null || cached[0] != cx || cached[1] != cz) {
-            KNOWN_CENTERS.put(mapKey, new int[]{cx, cz});
+        if (cached == null || cached.x != cx || cached.z != cz || cached.source != source) {
+            KNOWN_CENTERS.put(mapKey, new CenterEntry(cx, cz, source));
             dirty = true;
             save();
         }
