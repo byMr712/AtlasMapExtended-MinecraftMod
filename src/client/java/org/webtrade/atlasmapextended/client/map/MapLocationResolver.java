@@ -2,7 +2,6 @@ package org.webtrade.atlasmapextended.client.map;
 
 import com.google.gson.reflect.TypeToken;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.component.DataComponents;
@@ -10,6 +9,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.Mth;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.saveddata.maps.MapDecoration;
 import net.minecraft.world.level.saveddata.maps.MapDecorationTypes;
 import net.minecraft.world.level.saveddata.maps.MapId;
@@ -72,7 +72,7 @@ public final class MapLocationResolver {
         Storage.writeJsonAsync(path, new HashMap<>(KNOWN_CENTERS));
     }
 
-    public static void resolve(ClientLevel level, MapId mapId, MapItemSavedData data, BlockPos framePos) {
+    public static void resolve(Level level, MapId mapId, MapItemSavedData data, BlockPos framePos) {
         if (mapId == null || data == null || level == null) {
             return;
         }
