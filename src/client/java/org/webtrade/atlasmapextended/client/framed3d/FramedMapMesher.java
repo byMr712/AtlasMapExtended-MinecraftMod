@@ -141,8 +141,25 @@ public final class FramedMapMesher {
                                       FramedMapOverlay overlay, int textureMask,
                                       int tileDiv, int tileCol, int tileRow, int tileRotation,
                                       int reliefDiv) {
+        return build(volume, key, startY, overlay, textureMask,
+                tileDiv, tileCol, tileRow, tileRotation, reliefDiv, 1);
+    }
+
+    /**
+     * {@code lodStep} greater than one builds a cheap far-distance variant:
+     * one heightfield cell per {@code lodStep} source pixels, with shared
+     * corner heights so the surface stays continuous. Interior cliffs need no
+     * side quads because neighbouring cells share their corners; only the
+     * outer rim gets a skirt. This cuts a map from tens of thousands of quads
+     * to roughly {@code (128/lodStep)^2}.
+     */
+    public static FramedMapMesh build(FramedMapVolume volume, FramedMapKey key, int startY,
+                                      FramedMapOverlay overlay, int textureMask,
+                                      int tileDiv, int tileCol, int tileRow, int tileRotation,
+                                      int reliefDiv, int lodStep) {
         int div = Math.max(1, tileDiv);
         int relief = Math.max(1, reliefDiv);
+        int step = Math.max(1, Math.min(FramedMapVolume.SIZE, lodStep));
         int rotation = relief > 1 ? tileRotation & 3 : 0;
         int dstX0 = div == 1 ? 0 : tileCol * FramedMapVolume.SIZE / div;
         int dstX1 = div == 1 ? FramedMapVolume.SIZE : (tileCol + 1) * FramedMapVolume.SIZE / div;
@@ -225,119 +242,235 @@ public final class FramedMapMesher {
         List<Line> lines = new ArrayList<>();
         List<FramedMapMesh.VoxelIcon> icons = new ArrayList<>();
 
-        // top faces, greedily merged into colour/depth rectangles
-        boolean[] used = new boolean[FramedMapVolume.COLUMNS];
-        for (int pz = 0; pz < FramedMapVolume.SIZE; pz++) {
-            for (int px = 0; px < FramedMapVolume.SIZE; px++) {
-                int index = pz * FramedMapVolume.SIZE + px;
-                if (used[index]) {
-                    continue;
-                }
-                float d = depth[index];
-                if (d <= 0) {
-                    used[index] = true;
-                    continue;
-                }
-                int color = colors[index];
-                int width = 1;
-                while (px + width < FramedMapVolume.SIZE) {
-                    int next = index + width;
-                    if (used[next] || depth[next] != d || colors[next] != color) {
-                        break;
+        if (step <= 1) {
+            // top faces, greedily merged into colour/depth rectangles
+            boolean[] used = new boolean[FramedMapVolume.COLUMNS];
+            for (int pz = 0; pz < FramedMapVolume.SIZE; pz++) {
+                for (int px = 0; px < FramedMapVolume.SIZE; px++) {
+                    int index = pz * FramedMapVolume.SIZE + px;
+                    if (used[index]) {
+                        continue;
                     }
-                    width++;
-                }
-                int height = 1;
-                outer:
-                while (pz + height < FramedMapVolume.SIZE) {
-                    int row = (pz + height) * FramedMapVolume.SIZE + px;
-                    for (int x = 0; x < width; x++) {
-                        int next = row + x;
+                    float d = depth[index];
+                    if (d <= 0) {
+                        used[index] = true;
+                        continue;
+                    }
+                    int color = colors[index];
+                    int width = 1;
+                    while (px + width < FramedMapVolume.SIZE) {
+                        int next = index + width;
                         if (used[next] || depth[next] != d || colors[next] != color) {
-                            break outer;
+                            break;
+                        }
+                        width++;
+                    }
+                    int height = 1;
+                    outer:
+                    while (pz + height < FramedMapVolume.SIZE) {
+                        int row = (pz + height) * FramedMapVolume.SIZE + px;
+                        for (int x = 0; x < width; x++) {
+                            int next = row + x;
+                            if (used[next] || depth[next] != d || colors[next] != color) {
+                                break outer;
+                            }
+                        }
+                        height++;
+                    }
+                    for (int z = 0; z < height; z++) {
+                        int row = (pz + z) * FramedMapVolume.SIZE + px;
+                        for (int x = 0; x < width; x++) {
+                            used[row + x] = true;
                         }
                     }
-                    height++;
-                }
-                for (int z = 0; z < height; z++) {
-                    int row = (pz + z) * FramedMapVolume.SIZE + px;
-                    for (int x = 0; x < width; x++) {
-                        used[row + x] = true;
+                    float x0 = px == 0 && (textureMask & FramedMapConnections.TEX_LEFT) != 0
+                            ? -SEAM_OVERLAP : px;
+                    float x1 = px + width == FramedMapVolume.SIZE
+                            && (textureMask & FramedMapConnections.TEX_RIGHT) != 0
+                            ? FramedMapVolume.SIZE + SEAM_OVERLAP : px + width;
+                    float z0 = pz == 0 && (textureMask & FramedMapConnections.TEX_TOP) != 0
+                            ? -SEAM_OVERLAP : pz;
+                    float z1 = pz + height == FramedMapVolume.SIZE
+                            && (textureMask & FramedMapConnections.TEX_BOTTOM) != 0
+                            ? FramedMapVolume.SIZE + SEAM_OVERLAP : pz + height;
+                    quads.add(new Quad(
+                            x0, z0, d,
+                            x0, z1, d,
+                            x1, z1, d,
+                            x1, z0, d,
+                            color));
+                    if (quads.size() >= MAX_QUADS) {
+                        return finish(quads, lines, icons);
                     }
                 }
-                float x0 = px == 0 && (textureMask & FramedMapConnections.TEX_LEFT) != 0
-                        ? -SEAM_OVERLAP : px;
-                float x1 = px + width == FramedMapVolume.SIZE
-                        && (textureMask & FramedMapConnections.TEX_RIGHT) != 0
-                        ? FramedMapVolume.SIZE + SEAM_OVERLAP : px + width;
-                float z0 = pz == 0 && (textureMask & FramedMapConnections.TEX_TOP) != 0
-                        ? -SEAM_OVERLAP : pz;
-                float z1 = pz + height == FramedMapVolume.SIZE
-                        && (textureMask & FramedMapConnections.TEX_BOTTOM) != 0
-                        ? FramedMapVolume.SIZE + SEAM_OVERLAP : pz + height;
-                quads.add(new Quad(
-                        x0, z0, d,
-                        x0, z1, d,
-                        x1, z1, d,
-                        x1, z0, d,
-                        color));
-                if (quads.size() >= MAX_QUADS) {
-                    return finish(quads, lines, icons);
+            }
+
+            // side faces split into one-block layers so the cut shows real strata
+            WallCollector walls = new WallCollector();
+            for (int pz = 0; pz < FramedMapVolume.SIZE; pz++) {
+                for (int px = 0; px < FramedMapVolume.SIZE; px++) {
+                    int index = pz * FramedMapVolume.SIZE + px;
+                    float d = depth[index];
+                    if (d <= 0) {
+                        continue;
+                    }
+                    int sx = dstX0 + (int) ((long) px * (dstX1 - dstX0) / FramedMapVolume.SIZE);
+                    int sz = dstZ0 + (int) ((long) pz * (dstZ1 - dstZ0) / FramedMapVolume.SIZE);
+                    int wx = key.originX() + sx * scaleFactor;
+                    int wz = key.originZ() + sz * scaleFactor;
+                    int surfaceColor = colors[index];
+
+                    // Neighbouring maps continue the surface. For a mega-map the
+                    // next source column belongs to the same map, so close the
+                    // seam with a real wall; overlapping top faces caused
+                    // z-fighting and holes at the centre.
+                    float east = px + 1 < FramedMapVolume.SIZE ? depth[index + 1]
+                            : seamDepth(source, volume, startY, relief, dstX0, dstX1, dstZ0, dstZ1, rotation, px, pz, 1, 0, d, (textureMask & FramedMapConnections.TEX_RIGHT) != 0);
+                    if (east < d) {
+                        addWallEast(walls, volume, index, scaleFactor, wx, wz,
+                                px + 1, pz, east, d, surfaceColor, relief);
+                    }
+                    float west = px > 0 ? depth[index - 1]
+                            : seamDepth(source, volume, startY, relief, dstX0, dstX1, dstZ0, dstZ1, rotation, px, pz, -1, 0, d, (textureMask & FramedMapConnections.TEX_LEFT) != 0);
+                    if (west < d) {
+                        addWallWest(walls, volume, index, scaleFactor, wx, wz,
+                                px, pz, west, d, surfaceColor, relief);
+                    }
+                    float south = pz + 1 < FramedMapVolume.SIZE ? depth[index + FramedMapVolume.SIZE]
+                            : seamDepth(source, volume, startY, relief, dstX0, dstX1, dstZ0, dstZ1, rotation, px, pz, 0, 1, d, (textureMask & FramedMapConnections.TEX_BOTTOM) != 0);
+                    if (south < d) {
+                        addWallSouth(walls, volume, index, scaleFactor, wx, wz,
+                                pz + 1, px, south, d, surfaceColor, relief);
+                    }
+                    float north = pz > 0 ? depth[index - FramedMapVolume.SIZE]
+                            : seamDepth(source, volume, startY, relief, dstX0, dstX1, dstZ0, dstZ1, rotation, px, pz, 0, -1, d, (textureMask & FramedMapConnections.TEX_TOP) != 0);
+                    if (north < d) {
+                        addWallNorth(walls, volume, index, scaleFactor, wx, wz,
+                                pz, px, north, d, surfaceColor, relief);
+                    }
+                    if (quads.size() >= MAX_QUADS) {
+                        return finish(quads, lines, icons);
+                    }
                 }
             }
-        }
-
-        // side faces split into one-block layers so the cut shows real strata
-        WallCollector walls = new WallCollector();
-        for (int pz = 0; pz < FramedMapVolume.SIZE; pz++) {
-            for (int px = 0; px < FramedMapVolume.SIZE; px++) {
-                int index = pz * FramedMapVolume.SIZE + px;
-                float d = depth[index];
-                if (d <= 0) {
-                    continue;
-                }
-                int sx = dstX0 + (int) ((long) px * (dstX1 - dstX0) / FramedMapVolume.SIZE);
-                int sz = dstZ0 + (int) ((long) pz * (dstZ1 - dstZ0) / FramedMapVolume.SIZE);
-                int wx = key.originX() + sx * scaleFactor;
-                int wz = key.originZ() + sz * scaleFactor;
-                int surfaceColor = colors[index];
-
-                // Neighbouring maps continue the surface. For a mega-map the
-                // next source column belongs to the same map, so close the
-                // seam with a real wall; overlapping top faces caused
-                // z-fighting and holes at the centre.
-                float east = px + 1 < FramedMapVolume.SIZE ? depth[index + 1]
-                        : seamDepth(source, volume, startY, relief, dstX0, dstX1, dstZ0, dstZ1, rotation, px, pz, 1, 0, d, (textureMask & FramedMapConnections.TEX_RIGHT) != 0);
-                if (east < d) {
-                    addWallEast(walls, volume, index, scaleFactor, wx, wz,
-                            px + 1, pz, east, d, surfaceColor, relief);
-                }
-                float west = px > 0 ? depth[index - 1]
-                        : seamDepth(source, volume, startY, relief, dstX0, dstX1, dstZ0, dstZ1, rotation, px, pz, -1, 0, d, (textureMask & FramedMapConnections.TEX_LEFT) != 0);
-                if (west < d) {
-                    addWallWest(walls, volume, index, scaleFactor, wx, wz,
-                            px, pz, west, d, surfaceColor, relief);
-                }
-                float south = pz + 1 < FramedMapVolume.SIZE ? depth[index + FramedMapVolume.SIZE]
-                        : seamDepth(source, volume, startY, relief, dstX0, dstX1, dstZ0, dstZ1, rotation, px, pz, 0, 1, d, (textureMask & FramedMapConnections.TEX_BOTTOM) != 0);
-                if (south < d) {
-                    addWallSouth(walls, volume, index, scaleFactor, wx, wz,
-                            pz + 1, px, south, d, surfaceColor, relief);
-                }
-                float north = pz > 0 ? depth[index - FramedMapVolume.SIZE]
-                        : seamDepth(source, volume, startY, relief, dstX0, dstX1, dstZ0, dstZ1, rotation, px, pz, 0, -1, d, (textureMask & FramedMapConnections.TEX_TOP) != 0);
-                if (north < d) {
-                    addWallNorth(walls, volume, index, scaleFactor, wx, wz,
-                            pz, px, north, d, surfaceColor, relief);
-                }
-                if (quads.size() >= MAX_QUADS) {
-                    return finish(quads, lines, icons);
+            walls.emit(quads);
+            if (quads.size() >= MAX_QUADS) {
+                return finish(quads, lines, icons);
+            }
+        } else {
+            int cells = FramedMapVolume.SIZE / step;
+            int stride = cells + 1;
+            // Shared corner heights keep the coarse surface continuous, so no
+            // interior walls are needed at all.
+            float[] heights = new float[stride * stride];
+            for (int cz = 0; cz <= cells; cz++) {
+                for (int cx = 0; cx <= cells; cx++) {
+                    float sum = 0.0f;
+                    int count = 0;
+                    for (int dz = -1; dz <= 0; dz++) {
+                        for (int dx = -1; dx <= 0; dx++) {
+                            int cellX = cx + dx;
+                            int cellZ = cz + dz;
+                            if (cellX < 0 || cellZ < 0 || cellX >= cells || cellZ >= cells) {
+                                continue;
+                            }
+                            int repZ = cellZ * step + step / 2;
+                            int repX = cellX * step + step / 2;
+                            float d = depth[repZ * FramedMapVolume.SIZE + repX];
+                            if (d > 0.0f) {
+                                sum += d;
+                                count++;
+                            }
+                        }
+                    }
+                    heights[cz * stride + cx] = count == 0 ? 0.0f : sum / count;
                 }
             }
-        }
-        walls.emit(quads);
-        if (quads.size() >= MAX_QUADS) {
-            return finish(quads, lines, icons);
+
+            for (int cz = 0; cz < cells; cz++) {
+                for (int cx = 0; cx < cells; cx++) {
+                    int rep = (cz * step + step / 2) * FramedMapVolume.SIZE
+                            + cx * step + step / 2;
+                    float d = depth[rep];
+                    if (d <= 0.0f) {
+                        continue;
+                    }
+                    float x0 = cx == 0 && (textureMask & FramedMapConnections.TEX_LEFT) != 0
+                            ? -SEAM_OVERLAP : cx * step;
+                    float x1 = cx + 1 == cells && (textureMask & FramedMapConnections.TEX_RIGHT) != 0
+                            ? FramedMapVolume.SIZE + SEAM_OVERLAP : (cx + 1) * step;
+                    float z0 = cz == 0 && (textureMask & FramedMapConnections.TEX_TOP) != 0
+                            ? -SEAM_OVERLAP : cz * step;
+                    float z1 = cz + 1 == cells && (textureMask & FramedMapConnections.TEX_BOTTOM) != 0
+                            ? FramedMapVolume.SIZE + SEAM_OVERLAP : (cz + 1) * step;
+                    quads.add(new Quad(
+                            x0, z0, heights[cz * stride + cx],
+                            x0, z1, heights[(cz + 1) * stride + cx],
+                            x1, z1, heights[(cz + 1) * stride + cx + 1],
+                            x1, z0, heights[cz * stride + cx + 1],
+                            colors[rep]));
+                    if (quads.size() >= MAX_QUADS) {
+                        return finish(quads, lines, icons);
+                    }
+                }
+            }
+
+            // The skirt is the only place that needs a side quad: the rim of
+            // the whole map. Adjacent maps continue the surface, so their
+            // shared edge stays open, exactly like the full-detail path.
+            for (int cz = 0; cz < cells; cz++) {
+                for (int cx = 0; cx < cells; cx++) {
+                    int rep = (cz * step + step / 2) * FramedMapVolume.SIZE
+                            + cx * step + step / 2;
+                    if (depth[rep] <= 0.0f) {
+                        continue;
+                    }
+                    float x0 = cx * step;
+                    float x1 = (cx + 1) * step;
+                    float z0 = cz * step;
+                    float z1 = (cz + 1) * step;
+                    float h00 = heights[cz * stride + cx];
+                    float h10 = heights[cz * stride + cx + 1];
+                    float h01 = heights[(cz + 1) * stride + cx];
+                    float h11 = heights[(cz + 1) * stride + cx + 1];
+                    int color = colors[rep];
+                    if (cx == 0 && (textureMask & FramedMapConnections.TEX_LEFT) == 0) {
+                        quads.add(new Quad(
+                                x0, z1, 0.0f,
+                                x0, z0, 0.0f,
+                                x0, z0, h00,
+                                x0, z1, h01,
+                                shade(color, SIDE_SHADE)));
+                    }
+                    if (cx + 1 == cells && (textureMask & FramedMapConnections.TEX_RIGHT) == 0) {
+                        quads.add(new Quad(
+                                x1, z0, 0.0f,
+                                x1, z1, 0.0f,
+                                x1, z1, h11,
+                                x1, z0, h10,
+                                shade(color, SIDE_SHADE)));
+                    }
+                    if (cz == 0 && (textureMask & FramedMapConnections.TEX_TOP) == 0) {
+                        quads.add(new Quad(
+                                x0, z0, 0.0f,
+                                x1, z0, 0.0f,
+                                x1, z0, h10,
+                                x0, z0, h00,
+                                shade(color, EDGE_SHADE)));
+                    }
+                    if (cz + 1 == cells && (textureMask & FramedMapConnections.TEX_BOTTOM) == 0) {
+                        quads.add(new Quad(
+                                x1, z1, 0.0f,
+                                x0, z1, 0.0f,
+                                x0, z1, h01,
+                                x1, z1, h11,
+                                shade(color, EDGE_SHADE)));
+                    }
+                    if (quads.size() >= MAX_QUADS) {
+                        return finish(quads, lines, icons);
+                    }
+                }
+            }
         }
 
         if (overlay != null) {
