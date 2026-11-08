@@ -81,6 +81,8 @@ public final class FramedMapConnections {
     private static final class GroupState {
         int rotation;
         final Map<Long, Integer> last = new HashMap<>();
+        /** Entity ids of the frames that formed this group. */
+        final Set<Integer> entities = new HashSet<>();
     }
 
     private static final Map<GroupKey, GroupState> GROUPS = new HashMap<>();
@@ -424,15 +426,26 @@ public final class FramedMapConnections {
         GroupKey group = new GroupKey(anchor, cols, state.direction.ordinal(),
                 state.mapId.id(), level.dimension());
         GroupState groupState = GROUPS.computeIfAbsent(group, g -> new GroupState());
-        if (groupState.last.isEmpty()) {
+        Set<Integer> currentEntities = new HashSet<>();
+        for (ItemFrame frame : members.values()) {
+            currentEntities.add(frame.getId());
+        }
+        if (!groupState.entities.equals(currentEntities)) {
+            // A new physical group (frames were placed or replaced). Start
+            // from the canonical orientation, ignoring the item rotations.
+            groupState.entities.clear();
+            groupState.entities.addAll(currentEntities);
+            groupState.last.clear();
+            groupState.rotation = 0;
             for (Map.Entry<BlockPos, ItemFrame> entry : members.entrySet()) {
                 groupState.last.put(entry.getKey().asLong(), entry.getValue().getRotation() & 3);
             }
+            FramedMapDebug.log("group formed map={} tile={}x{} members={} rot=0",
+                    state.mapId.id(), cols, cols, members.size());
         } else {
-            Set<Long> alive = new HashSet<>();
+            // The same group: a click on any frame rotates the whole picture.
             for (Map.Entry<BlockPos, ItemFrame> entry : members.entrySet()) {
                 long id = entry.getKey().asLong();
-                alive.add(id);
                 int current = entry.getValue().getRotation() & 3;
                 Integer previous = groupState.last.get(id);
                 if (previous == null) {
@@ -440,9 +453,10 @@ public final class FramedMapConnections {
                 } else if (current != previous) {
                     groupState.rotation = (groupState.rotation + current - previous) & 3;
                     groupState.last.put(id, current);
+                    FramedMapDebug.log("group rotate map={} tile={}x{} at={} rot={}",
+                            state.mapId.id(), cols, cols, entry.getKey(), groupState.rotation);
                 }
             }
-            groupState.last.keySet().retainAll(alive);
         }
         return new TileInfo(cols, col, row, group);
     }
