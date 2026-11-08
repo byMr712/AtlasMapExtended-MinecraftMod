@@ -60,7 +60,7 @@ public final class FramedMapConnections {
     }
 
     public record Context(int frameMask, int textureMask, int worldMask,
-                          int tileDiv, int tileCol, int tileRow,
+                          int tileDiv, int tileCol, int tileRow, int tileRotation,
                           boolean glow, int light, boolean hideFrame) {
     }
 
@@ -68,11 +68,22 @@ public final class FramedMapConnections {
     }
 
     private record Cached(long tick, int frameMask, int textureMask, int worldMask,
-                          int tileDiv, int tileCol, int tileRow) {
+                          int tileDiv, int tileCol, int tileRow, GroupKey group) {
     }
 
-    private record TileInfo(int div, int col, int row) {
+    private record TileInfo(int div, int col, int row, GroupKey group) {
     }
+
+    private record GroupKey(long anchor, int div, int direction, int mapId,
+                            ResourceKey<Level> dimension) {
+    }
+
+    private static final class GroupState {
+        int rotation;
+        final Map<Long, Integer> last = new HashMap<>();
+    }
+
+    private static final Map<GroupKey, GroupState> GROUPS = new HashMap<>();
 
     public static Context context() {
         return current;
@@ -95,13 +106,8 @@ public final class FramedMapConnections {
         return current == null ? 0 : current.tileRow();
     }
 
-    /**
-     * Mega-map tiles always use the canonical, unrotated image. Individual
-     * frame rotations are deliberately ignored so the big picture behaves
-     * like a separate overlay and cannot be twisted by rotating one frame.
-     */
     public static int currentTileRotation() {
-        return 0;
+        return current == null ? 0 : current.tileRotation();
     }
 
     /** Rotates an unrotated source pixel into the displayed mega-map image. */
@@ -162,6 +168,8 @@ public final class FramedMapConnections {
             TileInfo tile = computeTile(level, pos, state, data);
             boolean mega = tile.div() > 1;
             if (mega) {
+                // The whole mega-map has one orientation; a rotation of any
+                // frame changes the common rotation instead of one tile.
                 state.rotation = 0;
             }
             int frameMask = computeFrameMask(level, pos, state, data, state.mapId, mega);
@@ -170,7 +178,7 @@ public final class FramedMapConnections {
                     ? worldTextureMask(worldMask)
                     : textureMask(frameMask, state.rotation);
             cached = new Cached(tick, frameMask, textureMask, worldMask,
-                    tile.div(), tile.col(), tile.row());
+                    tile.div(), tile.col(), tile.row(), tile.group());
             if (CACHE.size() > MAX_CACHE) {
                 CACHE.clear();
             }
@@ -178,15 +186,16 @@ public final class FramedMapConnections {
             if (previous == null || previous.frameMask() != frameMask
                     || previous.worldMask() != worldMask || !LOGGED_KEYS.contains(key)) {
                 logSummary(level, pos, state, data, frameMask, textureMask, worldMask,
-                        tile.div(), tile.col(), tile.row());
+                        tile.div(), tile.col(), tile.row(),
+                        tile.group() == null ? 0 : groupRotation(tile.group()));
                 LOGGED_KEYS.add(key);
             }
         }
 
-        // The mega-map is one overlay with a canonical orientation. The
-        // frame's own item rotation must not twist it. This has to happen on
-        // every submit, not only when the ten-tick cache is refreshed, or the
-        // vanilla map pose and the custom texture would disagree.
+        // The mega-map is one shared image: the custom texture and mesh
+        // already carry the group rotation. Zero the frame's own item
+        // rotation on every submit, not only when the ten-tick cache is
+        // refreshed, or the vanilla map pose would add it a second time.
         if (cached.tileDiv() > 1) {
             state.rotation = 0;
         }
@@ -195,9 +204,10 @@ public final class FramedMapConnections {
         int frameMask = front ? cached.frameMask() : 0;
         int textureMask = front ? cached.textureMask() : 0;
         int worldMask = front ? cached.worldMask() : 0;
+        int tileRotation = cached.group() == null ? 0 : groupRotation(cached.group());
         int light = state.isGlowFrame ? 15728880 : state.lightCoords;
         current = new Context(frameMask, textureMask, worldMask,
-                cached.tileDiv(), cached.tileCol(), cached.tileRow(),
+                cached.tileDiv(), cached.tileCol(), cached.tileRow(), tileRotation,
                 state.isGlowFrame, light, worldMask != 0);
     }
 
@@ -207,6 +217,7 @@ public final class FramedMapConnections {
 
     public static void clear() {
         CACHE.clear();
+        GROUPS.clear();
         LOGGED_KEYS.clear();
         RIM_LOGGED.clear();
         FramedMapRenderer.clearDiagnostics();
@@ -325,7 +336,7 @@ public final class FramedMapConnections {
      */
     private static TileInfo computeTile(ClientLevel level, BlockPos start, ItemFrameRenderState state,
                                         MapItemSavedData data) {
-        TileInfo none = new TileInfo(1, 0, 0);
+        TileInfo none = new TileInfo(1, 0, 0, null);
         if (state.mapId == null) {
             return none;
         }
@@ -360,13 +371,13 @@ public final class FramedMapConnections {
         Direction imgRight = localX.getOpposite();
         Direction imgDown = localY.getOpposite();
 
-        Set<BlockPos> members = new HashSet<>();
+        Map<BlockPos, ItemFrame> members = new HashMap<>();
         ArrayDeque<BlockPos> queue = new ArrayDeque<>();
         ItemFrame startFrame = sameMapFrameAt(level, start, state.direction, state.mapId, data);
         if (startFrame == null) {
             return none;
         }
-        members.add(start);
+        members.put(start, startFrame);
         queue.add(start);
         int minR = Integer.MAX_VALUE;
         int maxR = Integer.MIN_VALUE;
@@ -387,12 +398,12 @@ public final class FramedMapConnections {
             maxD = Math.max(maxD, d);
             for (Direction side : planeSides(state.direction)) {
                 BlockPos next = pos.relative(side);
-                if (members.contains(next)) {
+                if (members.containsKey(next)) {
                     continue;
                 }
                 ItemFrame neighbor = sameMapFrameAt(level, next, state.direction, state.mapId, data);
                 if (neighbor != null) {
-                    members.add(next);
+                    members.put(next, neighbor);
                     queue.add(next);
                 }
             }
@@ -405,7 +416,40 @@ public final class FramedMapConnections {
         }
         int col = dot(start, imgRight) - minR;
         int row = dot(start, imgDown) - minD;
-        return new TileInfo(cols, col, row);
+
+        long anchor = Long.MAX_VALUE;
+        for (BlockPos member : members.keySet()) {
+            anchor = Math.min(anchor, member.asLong());
+        }
+        GroupKey group = new GroupKey(anchor, cols, state.direction.ordinal(),
+                state.mapId.id(), level.dimension());
+        GroupState groupState = GROUPS.computeIfAbsent(group, g -> new GroupState());
+        if (groupState.last.isEmpty()) {
+            for (Map.Entry<BlockPos, ItemFrame> entry : members.entrySet()) {
+                groupState.last.put(entry.getKey().asLong(), entry.getValue().getRotation() & 3);
+            }
+        } else {
+            Set<Long> alive = new HashSet<>();
+            for (Map.Entry<BlockPos, ItemFrame> entry : members.entrySet()) {
+                long id = entry.getKey().asLong();
+                alive.add(id);
+                int current = entry.getValue().getRotation() & 3;
+                Integer previous = groupState.last.get(id);
+                if (previous == null) {
+                    groupState.last.put(id, current);
+                } else if (current != previous) {
+                    groupState.rotation = (groupState.rotation + current - previous) & 3;
+                    groupState.last.put(id, current);
+                }
+            }
+            groupState.last.keySet().retainAll(alive);
+        }
+        return new TileInfo(cols, col, row, group);
+    }
+
+    private static int groupRotation(GroupKey group) {
+        GroupState state = GROUPS.get(group);
+        return state == null ? 0 : state.rotation & 3;
     }
 
     private static Direction[] planeSides(Direction direction) {
@@ -479,14 +523,14 @@ public final class FramedMapConnections {
     /** Diagnostic: writes one line per frame and one line per checked side. */
     private static void logSummary(ClientLevel level, BlockPos pos, ItemFrameRenderState state,
                                    MapItemSavedData data, int frameMask, int textureMask, int worldMask,
-                                   int tileDiv, int tileCol, int tileRow) {
+                                   int tileDiv, int tileCol, int tileRow, int tileRotation) {
         if (!FramedMapDebug.ENABLED) {
             return;
         }
-        FramedMapDebug.log("frame {} map={} center={},{} tile={}x{} col={} row={} scale={} dim={} dir={} rot={} mask={} tex={} world={}",
+        FramedMapDebug.log("frame {} map={} center={},{} tile={}x{} col={} row={} scale={} dim={} dir={} rot={} frameRot={} mask={} tex={} world={}",
                 pos, state.mapId == null ? "null" : state.mapId.id(),
                 data.centerX, data.centerZ, tileDiv, tileDiv, tileCol, tileRow, data.scale,
-                data.dimension.identifier(), state.direction, state.rotation & 3,
+                data.dimension.identifier(), state.direction, tileRotation, state.rotation & 3,
                 frameMask, textureMask, worldMask);
         Direction right;
         Direction up;
