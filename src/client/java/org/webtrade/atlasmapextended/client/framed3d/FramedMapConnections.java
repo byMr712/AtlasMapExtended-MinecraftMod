@@ -3,6 +3,7 @@ package org.webtrade.atlasmapextended.client.framed3d;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.multiplayer.ClientLevel;
+import org.webtrade.atlasmapextended.client.data.Storage;
 import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.entity.state.ItemFrameRenderState;
 import net.minecraft.client.renderer.rendertype.RenderType;
@@ -25,7 +26,9 @@ import org.joml.Matrix4fc;
 import org.webtrade.atlasmapextended.client.gui.Paper;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Finds map frames that touch this one and turns the shared edges into one
@@ -48,6 +51,7 @@ public final class FramedMapConnections {
     private static final int CACHE_TICKS = 10;
     private static final int MAX_CACHE = 8192;
     private static final Map<Key, Cached> CACHE = new HashMap<>();
+    private static final Set<Long> LOGGED = new HashSet<>();
     private static Context current;
 
     private FramedMapConnections() {
@@ -94,6 +98,10 @@ public final class FramedMapConnections {
                 CACHE.clear();
             }
             CACHE.put(key, cached);
+            if (cached.frameMask() != 0 && LOGGED.add(key.pos())) {
+                Storage.LOG.info("[AtlasMap3D] connected map frame at {}, {}, {} (mask {}, map edges {})",
+                        pos.getX(), pos.getY(), pos.getZ(), cached.frameMask(), cached.textureMask());
+            }
         }
 
         boolean front = camera == null || camera.pos == null || frontSide(camera.pos, pos, state.direction);
@@ -109,6 +117,7 @@ public final class FramedMapConnections {
 
     public static void clear() {
         CACHE.clear();
+        LOGGED.clear();
         current = null;
     }
 
