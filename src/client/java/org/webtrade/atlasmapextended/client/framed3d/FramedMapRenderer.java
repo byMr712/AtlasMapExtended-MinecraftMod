@@ -104,11 +104,11 @@ public final class FramedMapRenderer {
         if (groupGlow != null) {
             // One shared mesh, but each quad knows its physical frame tile,
             // so only the glow frames' parts are self-lit.
-            collector.submitCustomGeometry(pose, RenderTypes.entityCutout(WHITE, false),
+            collector.submitCustomGeometry(pose, RenderTypes.text(WHITE),
                     (p, consumer) -> mesh.emitTiled(p.pose(), consumer, 1.0f, groupLight,
                             groupGlow, GLOW_LIGHT, GLOW_MESH_BRIGHTNESS));
         } else {
-            collector.submitCustomGeometry(pose, RenderTypes.entityCutout(WHITE, false),
+            collector.submitCustomGeometry(pose, RenderTypes.text(WHITE),
                     (p, consumer) -> mesh.emit(p.pose(), consumer, meshBrightness, light));
         }
         if (mesh.lineCount() > 0) {
@@ -120,7 +120,7 @@ public final class FramedMapRenderer {
         boolean verticalFrame = state.direction != null && state.direction.getAxis().isVertical();
         float standUp = (float) Math.toRadians(state.direction == Direction.DOWN ? 90.0 : -90.0);
         if (!mesh.voxelIcons().isEmpty()) {
-            collector.submitCustomGeometry(pose, RenderTypes.entityCutout(WHITE, false), (p, consumer) -> {
+            collector.submitCustomGeometry(pose, RenderTypes.text(WHITE), (p, consumer) -> {
                 Matrix4f base = p.pose();
                 // A mega group's pose already scales the whole map by div;
                 // the icon geometry must stay in map pixels, not be scaled twice.

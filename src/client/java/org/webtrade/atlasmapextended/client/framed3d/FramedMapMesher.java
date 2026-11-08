@@ -5,6 +5,10 @@ import org.webtrade.atlasmapextended.client.data.Marker;
 import org.webtrade.atlasmapextended.client.data.Region;
 import org.webtrade.atlasmapextended.client.data.Stroke;
 import org.webtrade.atlasmapextended.client.map.ChunkScanner;
+import org.webtrade.atlasmapextended.client.map.MapLayer;
+import org.webtrade.atlasmapextended.client.map.MapManager;
+import org.webtrade.atlasmapextended.client.map.MapSession;
+import org.webtrade.atlasmapextended.client.map.MapTile;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -208,6 +212,9 @@ public final class FramedMapMesher {
         // single-map 96 units flattened every tile bigger than ~2x2.
         float maxDepth = MAX_DEPTH * relief;
 
+        MapSession session = MapManager.live();
+        MapLayer layer = session == null ? null : session.layer(key.dimension().identifier().toString());
+
         for (int pz = 0; pz < FramedMapVolume.SIZE; pz++) {
             for (int px = 0; px < FramedMapVolume.SIZE; px++) {
                 int index = pz * FramedMapVolume.SIZE + px;
@@ -226,14 +233,27 @@ public final class FramedMapMesher {
                 // maps. Dividing by the map scale made large maps almost flat.
                 float height = Math.max(0, volume.surfaceY[index] - startY) * relief;
                 depth[index] = Math.min(maxDepth, height) + BASE_OFFSET;
-                int waterDepth = volume.water[index]
-                        ? Math.max(1, volume.waterDepth[index] & 0xFF) : 0;
-                colors[index] = ChunkScanner.papyrus(
-                        volume.rgb[index],
-                        volume.surfaceY[index],
-                        hn, hw,
-                        waterDepth,
-                        wx, wz);
+                int argb = 0;
+                if (layer != null) {
+                    MapTile mapTile = layer.getForRead(
+                            Math.floorDiv(wx, MapTile.SIZE), Math.floorDiv(wz, MapTile.SIZE));
+                    if (mapTile != null) {
+                        argb = mapTile.getPixel(
+                                Math.floorMod(wx, MapTile.SIZE), Math.floorMod(wz, MapTile.SIZE));
+                    }
+                }
+                if (argb != 0) {
+                    colors[index] = argb;
+                } else {
+                    int waterDepth = volume.water[index]
+                            ? Math.max(1, volume.waterDepth[index] & 0xFF) : 0;
+                    colors[index] = ChunkScanner.papyrus(
+                            volume.rgb[index],
+                            volume.surfaceY[index],
+                            hn, hw,
+                            waterDepth,
+                            wx, wz);
+                }
                 if (overlay != null) {
                     double cx = wx + scaleFactor * 0.5;
                     double cz = wz + scaleFactor * 0.5;
