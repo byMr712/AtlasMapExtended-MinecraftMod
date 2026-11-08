@@ -17,6 +17,12 @@
 
 > Мод сделан и портирован с помощью ИИ по идеям автора и зрителей.
 
+<div align="center">
+
+  [<img width="900" alt="Скачать на CurseForge" src="images/curseforge_banner.png">](https://www.curseforge.com/minecraft/mc-mods/atlas-map-extended)
+
+</div>
+
 ## Галерея
 
 | Карта мира | Миникарта |
@@ -93,3 +99,4 @@
 
 - **Автор мода:** [erkinpaw](https://github.com/erkinpaw) · **Лицензия:** [MIT](https://github.com/byMr712/AtlasMapExtended-MinecraftMod/blob/26.3/LICENSE).  
 - **Автор порта на Fabric/Neoforge 1.21 - 26.2:** [Mr712](https://github.com/byMr712/AtlasMapExtended-MinecraftMod) · **Лицензия:** [Apache License 2.0](LICENSE).
+
