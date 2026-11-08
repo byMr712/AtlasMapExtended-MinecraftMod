@@ -59,26 +59,27 @@ public final class FramedMapRenderer {
         }
 
         int div = Math.max(1, tileDiv);
-        if (tooSmallOnScreen(state, div, mc)) {
+        int step = reliefStep(state, div, mc);
+        if (step <= 0) {
             return;
         }
         int rotation = megatileRotation(div, tileRotation);
         FramedMapMesh mesh = div > 1
-                ? FramedMapCache.getGroup(level, state.mapId, data, div, rotation)
+                ? FramedMapCache.getGroup(level, state.mapId, data, div, rotation, step)
                 : FramedMapCache.getOrRequest(
-                        level, state.mapId, data, textureMask, div, tileCol, tileRow, rotation);
+                        level, state.mapId, data, textureMask, div, tileCol, tileRow, rotation, step);
         if (mesh == null) {
-            logOnce("nomesh:" + state.mapId.id() + ":" + textureMask + ":" + div + ":" + tileCol + ":" + tileRow + ":" + rotation,
-                    "render map={} mask={} center={},{} tile={}x{} col={} row={} rot={} scale={} -> mesh not ready",
+            logOnce("nomesh:" + state.mapId.id() + ":" + textureMask + ":" + div + ":" + tileCol + ":" + tileRow + ":" + rotation + ":" + step,
+                    "render map={} mask={} center={},{} tile={}x{} col={} row={} rot={} lod={} scale={} -> mesh not ready",
                     state.mapId.id(), textureMask, data.centerX, data.centerZ,
-                    div, div, tileCol, tileRow, rotation, data.scale);
+                    div, div, tileCol, tileRow, rotation, step, data.scale);
             return;
         }
         logOnce("mesh:" + state.mapId.id() + ":" + textureMask + ":" + div + ":" + tileCol + ":" + tileRow + ":" + rotation
-                        + ":" + System.identityHashCode(mesh),
-                "render map={} mask={} center={},{} tile={}x{} col={} row={} rot={} scale={} glow={} quads={} lines={} icons={}",
+                        + ":" + step + ":" + System.identityHashCode(mesh),
+                "render map={} mask={} center={},{} tile={}x{} col={} row={} rot={} lod={} scale={} glow={} quads={} lines={} icons={}",
                 state.mapId.id(), textureMask, data.centerX, data.centerZ,
-                div, div, tileCol, tileRow, rotation, data.scale,
+                div, div, tileCol, tileRow, rotation, step, data.scale,
                 state.isGlowFrame, mesh.quadCount(), mesh.lineCount(), mesh.voxelIcons().size());
         long gameTime = level.getGameTime();
         float meshBrightness = state.isGlowFrame ? GLOW_MESH_BRIGHTNESS : 1.0f;
@@ -144,12 +145,15 @@ public final class FramedMapRenderer {
     }
 
     /**
-     * Far/small maps keep their 2D base but skip the relief mesh. At less
-     * than a few pixels the relief cannot be seen anyway.
+     * Picks the relief detail from the map's projected size. The 2D base is
+     * always drawn by vanilla; only the extra 3D layer is levelled. Many maps
+     * at once therefore cost roughly one full-detail map instead of one each.
+     *
+     * @return 0 = no 3D, 1 = full detail, 2/4 = coarse step in source pixels
      */
-    private static boolean tooSmallOnScreen(ItemFrameRenderState state, int div, Minecraft mc) {
+    private static int reliefStep(ItemFrameRenderState state, int div, Minecraft mc) {
         if (mc.player == null) {
-            return false;
+            return 1;
         }
         Vec3 eye = mc.player.getEyePosition();
         double dx = state.x - eye.x;
@@ -157,12 +161,21 @@ public final class FramedMapRenderer {
         double dz = state.z - eye.z;
         double distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
         if (distance < 1.0) {
-            return false;
+            return 1;
         }
         double fov = Math.toRadians(mc.options.fov().get());
         double pixels = mc.getWindow().getHeight() * div
                 / (2.0 * distance * Math.tan(fov * 0.5));
-        return pixels < 8.0;
+        if (pixels < 8.0) {
+            return 0;
+        }
+        if (pixels >= 128.0) {
+            return 1;
+        }
+        if (pixels >= 64.0) {
+            return 2;
+        }
+        return 4;
     }
 
     private static void logOnce(String key, String message, Object... args) {
