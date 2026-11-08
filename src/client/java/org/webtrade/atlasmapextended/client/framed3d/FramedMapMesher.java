@@ -19,8 +19,8 @@ public final class FramedMapMesher {
     private static final float MAX_DEPTH = 96.0f;
     /** Keeps the relief clearly in front of the flat map and avoids z-fighting. */
     private static final float BASE_OFFSET = 0.5f;
-    /** Overlap at joins so a one-pixel height step cannot show the paper below. */
-    private static final float SEAM_OVERLAP = 1.0f;
+    /** The internal seam is closed by a real wall, not by overlapping top faces. */
+    private static final float SEAM_OVERLAP = 0.0f;
     private static final float SIDE_SHADE = 0.78f;
     private static final float EDGE_SHADE = 0.68f;
     /** How far above the surface marker icons hover, in map pixels. */
@@ -186,28 +186,34 @@ public final class FramedMapMesher {
                 int wz = key.originZ() + pz * scaleFactor;
                 int surfaceColor = colors[index];
 
-                // Neighbouring maps continue the surface, so their shared edge
-                // must not get a cut face between the two frames.
+                // Neighbouring maps continue the surface. For a mega-map the
+                // next source column belongs to the same map, so close the
+                // seam with a real wall; overlapping top faces caused
+                // z-fighting and holes at the centre.
                 float east = px + 1 < FramedMapVolume.SIZE ? depth[index + 1]
-                        : (textureMask & FramedMapConnections.TEX_RIGHT) != 0 ? d : 0;
+                        : seamDepth(source, volume, startY, div, srcX0, srcX1, srcZ0, srcZ1,
+                        px, pz, 1, 0, d, (textureMask & FramedMapConnections.TEX_RIGHT) != 0);
                 if (east < d) {
                     addWallEast(quads, volume, index, scaleFactor, wx, wz,
                             px + 1, pz, east, d, surfaceColor);
                 }
                 float west = px > 0 ? depth[index - 1]
-                        : (textureMask & FramedMapConnections.TEX_LEFT) != 0 ? d : 0;
+                        : seamDepth(source, volume, startY, div, srcX0, srcX1, srcZ0, srcZ1,
+                        px, pz, -1, 0, d, (textureMask & FramedMapConnections.TEX_LEFT) != 0);
                 if (west < d) {
                     addWallWest(quads, volume, index, scaleFactor, wx, wz,
                             px, pz, west, d, surfaceColor);
                 }
                 float south = pz + 1 < FramedMapVolume.SIZE ? depth[index + FramedMapVolume.SIZE]
-                        : (textureMask & FramedMapConnections.TEX_BOTTOM) != 0 ? d : 0;
+                        : seamDepth(source, volume, startY, div, srcX0, srcX1, srcZ0, srcZ1,
+                        px, pz, 0, 1, d, (textureMask & FramedMapConnections.TEX_BOTTOM) != 0);
                 if (south < d) {
                     addWallSouth(quads, volume, index, scaleFactor, wx, wz,
                             px, pz + 1, south, d, surfaceColor);
                 }
                 float north = pz > 0 ? depth[index - FramedMapVolume.SIZE]
-                        : (textureMask & FramedMapConnections.TEX_TOP) != 0 ? d : 0;
+                        : seamDepth(source, volume, startY, div, srcX0, srcX1, srcZ0, srcZ1,
+                        px, pz, 0, -1, d, (textureMask & FramedMapConnections.TEX_TOP) != 0);
                 if (north < d) {
                     addWallNorth(quads, volume, index, scaleFactor, wx, wz,
                             px, pz, north, d, surfaceColor);
@@ -223,6 +229,35 @@ public final class FramedMapMesher {
                     div, srcX0, srcX1, srcZ0, srcZ1);
         }
         return finish(quads, lines, icons);
+    }
+
+    /**
+     * Depth of the next source column at an internal tile seam. For normal
+     * maps the old behaviour is kept (skip the wall); for a mega-map the
+     * source volume contains the neighbour tile and we can close the gap.
+     */
+    private static float seamDepth(FramedMapVolume source, FramedMapVolume tile, int startY, int div,
+                                   int srcX0, int srcX1, int srcZ0, int srcZ1,
+                                   int px, int pz, int dx, int dz, float own, boolean internal) {
+        if (!internal) {
+            return 0;
+        }
+        if (div <= 1) {
+            return own;
+        }
+        int sx = srcX0 + px * (srcX1 - srcX0) / FramedMapVolume.SIZE;
+        int sz = srcZ0 + pz * (srcZ1 - srcZ0) / FramedMapVolume.SIZE;
+        int nx = sx + dx;
+        int nz = sz + dz;
+        if (nx < 0 || nz < 0 || nx >= FramedMapVolume.SIZE || nz >= FramedMapVolume.SIZE) {
+            return own;
+        }
+        int ni = nz * FramedMapVolume.SIZE + nx;
+        if (!source.valid[ni]) {
+            return own;
+        }
+        float neighbor = Math.max(0, source.surfaceY[ni] - startY) * div;
+        return Math.min(MAX_DEPTH, neighbor) + BASE_OFFSET;
     }
 
     private static void addWallEast(List<Quad> quads, FramedMapVolume volume, int index, int scaleFactor,
