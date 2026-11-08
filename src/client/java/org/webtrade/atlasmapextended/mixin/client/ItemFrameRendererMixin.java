@@ -1,6 +1,7 @@
 package org.webtrade.atlasmapextended.mixin.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.math.Axis;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.SubmitNodeCollector;
@@ -100,6 +101,12 @@ public class ItemFrameRendererMixin {
         }
         MapItemSavedData data = level.getMapData(state.mapId);
         if (data != null) {
+            if (ModConfig.get().framedMaps3D) {
+                // The framed relief was drawn upside down relative to the
+                // vanilla map. Turn the whole framed picture (base texture,
+                // decorations and 3D mesh) by 180 degrees from the start.
+                pose.mulPose(Axis.ZP.rotationDegrees(180.0f));
+            }
             int tileDiv = FramedMapConnections.currentTileDiv();
             if (tileDiv > 1) {
                 state.mapRenderState.decorations.clear();
