@@ -131,6 +131,17 @@ public final class FramedMapRenderer {
                     }
                     boolean arrowIcon = icon.icon().startsWith("arrow");
                     Matrix4f matrix = new Matrix4f(base).translate(icon.x(), icon.y(), icon.z());
+                    if (rotation != 0) {
+                        // Icon positions are already in the rotated group
+                        // image; the shape itself must turn with it too.
+                        matrix.rotateZ((float) Math.toRadians(rotation * 90.0));
+                    }
+                    if (div > 1) {
+                        // The group pose scales X/Y by div but leaves Z at 1x.
+                        // Compensate before the icon's own rotations, or
+                        // standing icons are squashed vertically by div.
+                        matrix.scale(1.0f, 1.0f, div);
+                    }
                     if (arrowIcon) {
                         // Bullet spin around the arrow's own line; opposite
                         // directions are normalised to the same side.
