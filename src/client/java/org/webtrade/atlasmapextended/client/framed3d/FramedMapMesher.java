@@ -7,7 +7,9 @@ import org.webtrade.atlasmapextended.client.data.Stroke;
 import org.webtrade.atlasmapextended.client.map.ChunkScanner;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Builds the framed relief with real side-wall strata and a frozen overlay
@@ -52,6 +54,79 @@ public final class FramedMapMesher {
             p[0] = x0; p[1] = y0; p[2] = z0;
             p[3] = x1; p[4] = y1; p[5] = z1;
             this.color = color;
+        }
+    }
+
+    private static final int WALL_EAST = 0;
+    private static final int WALL_WEST = 1;
+    private static final int WALL_SOUTH = 2;
+    private static final int WALL_NORTH = 3;
+
+    private record WallKey(int dir, float plane, float from, float to, int color) {
+    }
+
+    /**
+     * Collects wall strips and merges adjacent strips with the same plane,
+     * height and colour. This is the same surface as drawing every column
+     * separately, just with far fewer quads.
+     */
+    private static final class WallCollector {
+        private final Map<WallKey, List<float[]>> spans = new HashMap<>();
+
+        void add(int dir, float plane, float start, float end, float from, float to, int color) {
+            spans.computeIfAbsent(new WallKey(dir, plane, from, to, color), k -> new ArrayList<>())
+                    .add(new float[]{start, end});
+        }
+
+        void emit(List<Quad> quads) {
+            for (Map.Entry<WallKey, List<float[]>> entry : spans.entrySet()) {
+                WallKey key = entry.getKey();
+                List<float[]> list = entry.getValue();
+                list.sort((a, b) -> Float.compare(a[0], b[0]));
+                float start = list.get(0)[0];
+                float end = list.get(0)[1];
+                for (int i = 1; i < list.size(); i++) {
+                    float[] span = list.get(i);
+                    if (span[0] <= end + 1e-4f) {
+                        if (span[1] > end) {
+                            end = span[1];
+                        }
+                    } else {
+                        emitQuad(quads, key, start, end);
+                        if (quads.size() >= MAX_QUADS) {
+                            return;
+                        }
+                        start = span[0];
+                        end = span[1];
+                    }
+                }
+                emitQuad(quads, key, start, end);
+                if (quads.size() >= MAX_QUADS) {
+                    return;
+                }
+            }
+        }
+
+        private static void emitQuad(List<Quad> quads, WallKey key, float start, float end) {
+            float plane = key.plane();
+            float from = key.from();
+            float to = key.to();
+            switch (key.dir()) {
+                case WALL_EAST -> quads.add(new Quad(
+                        plane, start, from, plane, end, from, plane, end, to, plane, start, to,
+                        key.color()));
+                case WALL_WEST -> quads.add(new Quad(
+                        plane, end, from, plane, start, from, plane, start, to, plane, end, to,
+                        key.color()));
+                case WALL_SOUTH -> quads.add(new Quad(
+                        end, plane, from, start, plane, from, start, plane, to, end, plane, to,
+                        key.color()));
+                case WALL_NORTH -> quads.add(new Quad(
+                        start, plane, from, end, plane, from, end, plane, to, start, plane, to,
+                        key.color()));
+                default -> {
+                }
+            }
         }
     }
 
@@ -204,6 +279,7 @@ public final class FramedMapMesher {
         }
 
         // side faces split into one-block layers so the cut shows real strata
+        WallCollector walls = new WallCollector();
         for (int pz = 0; pz < FramedMapVolume.SIZE; pz++) {
             for (int px = 0; px < FramedMapVolume.SIZE; px++) {
                 int index = pz * FramedMapVolume.SIZE + px;
@@ -224,31 +300,35 @@ public final class FramedMapMesher {
                 float east = px + 1 < FramedMapVolume.SIZE ? depth[index + 1]
                         : seamDepth(source, volume, startY, div, dstX0, dstX1, dstZ0, dstZ1, rotation, px, pz, 1, 0, d, (textureMask & FramedMapConnections.TEX_RIGHT) != 0);
                 if (east < d) {
-                    addWallEast(quads, volume, index, scaleFactor, wx, wz,
+                    addWallEast(walls, volume, index, scaleFactor, wx, wz,
                             px + 1, pz, east, d, surfaceColor, div);
                 }
                 float west = px > 0 ? depth[index - 1]
                         : seamDepth(source, volume, startY, div, dstX0, dstX1, dstZ0, dstZ1, rotation, px, pz, -1, 0, d, (textureMask & FramedMapConnections.TEX_LEFT) != 0);
                 if (west < d) {
-                    addWallWest(quads, volume, index, scaleFactor, wx, wz,
+                    addWallWest(walls, volume, index, scaleFactor, wx, wz,
                             px, pz, west, d, surfaceColor, div);
                 }
                 float south = pz + 1 < FramedMapVolume.SIZE ? depth[index + FramedMapVolume.SIZE]
                         : seamDepth(source, volume, startY, div, dstX0, dstX1, dstZ0, dstZ1, rotation, px, pz, 0, 1, d, (textureMask & FramedMapConnections.TEX_BOTTOM) != 0);
                 if (south < d) {
-                    addWallSouth(quads, volume, index, scaleFactor, wx, wz,
-                            px, pz + 1, south, d, surfaceColor, div);
+                    addWallSouth(walls, volume, index, scaleFactor, wx, wz,
+                            pz + 1, px, south, d, surfaceColor, div);
                 }
                 float north = pz > 0 ? depth[index - FramedMapVolume.SIZE]
                         : seamDepth(source, volume, startY, div, dstX0, dstX1, dstZ0, dstZ1, rotation, px, pz, 0, -1, d, (textureMask & FramedMapConnections.TEX_TOP) != 0);
                 if (north < d) {
-                    addWallNorth(quads, volume, index, scaleFactor, wx, wz,
-                            px, pz, north, d, surfaceColor, div);
+                    addWallNorth(walls, volume, index, scaleFactor, wx, wz,
+                            pz, px, north, d, surfaceColor, div);
                 }
                 if (quads.size() >= MAX_QUADS) {
                     return finish(quads, lines, icons);
                 }
             }
+        }
+        walls.emit(quads);
+        if (quads.size() >= MAX_QUADS) {
+            return finish(quads, lines, icons);
         }
 
         if (overlay != null) {
@@ -289,90 +369,53 @@ public final class FramedMapMesher {
         return Math.min(MAX_DEPTH * div, neighbor) + BASE_OFFSET;
     }
 
-    private static void addWallEast(List<Quad> quads, FramedMapVolume volume, int index, int scaleFactor,
-                                    int wx, int wz, float x, float z, float from, float to, int surfaceColor,
-                                    int div) {
-        float a = from;
-        while (a < to) {
-            float b = Math.min(to, a + div);
-            int color = wallColor(volume, index, scaleFactor, wx, wz, to, (a + b) * 0.5f,
-                    surfaceColor, SIDE_SHADE, div);
-            while (b < to) {
-                float c = Math.min(to, b + div);
-                int next = wallColor(volume, index, scaleFactor, wx, wz, to, (b + c) * 0.5f,
-                        surfaceColor, SIDE_SHADE, div);
-                if (next != color) {
-                    break;
-                }
-                b = c;
-            }
-            quads.add(new Quad(x, z, a, x, z + 1, a, x, z + 1, b, x, z, b, color));
-            a = b;
-        }
+    private static void addWallEast(WallCollector walls, FramedMapVolume volume, int index, int scaleFactor,
+                                    int wx, int wz, float plane, int spanStart, float from, float to,
+                                    int surfaceColor, int div) {
+        addWall(walls, WALL_EAST, plane, spanStart, volume, index, scaleFactor, wx, wz,
+                from, to, surfaceColor, SIDE_SHADE, div);
     }
 
-    private static void addWallWest(List<Quad> quads, FramedMapVolume volume, int index, int scaleFactor,
-                                    int wx, int wz, float x, float z, float from, float to, int surfaceColor,
-                                    int div) {
-        float a = from;
-        while (a < to) {
-            float b = Math.min(to, a + div);
-            int color = wallColor(volume, index, scaleFactor, wx, wz, to, (a + b) * 0.5f,
-                    surfaceColor, SIDE_SHADE, div);
-            while (b < to) {
-                float c = Math.min(to, b + div);
-                int next = wallColor(volume, index, scaleFactor, wx, wz, to, (b + c) * 0.5f,
-                        surfaceColor, SIDE_SHADE, div);
-                if (next != color) {
-                    break;
-                }
-                b = c;
-            }
-            quads.add(new Quad(x, z + 1, a, x, z, a, x, z, b, x, z + 1, b, color));
-            a = b;
-        }
+    private static void addWallWest(WallCollector walls, FramedMapVolume volume, int index, int scaleFactor,
+                                    int wx, int wz, float plane, int spanStart, float from, float to,
+                                    int surfaceColor, int div) {
+        addWall(walls, WALL_WEST, plane, spanStart, volume, index, scaleFactor, wx, wz,
+                from, to, surfaceColor, SIDE_SHADE, div);
     }
 
-    private static void addWallSouth(List<Quad> quads, FramedMapVolume volume, int index, int scaleFactor,
-                                     int wx, int wz, float x, float z, float from, float to, int surfaceColor,
-                                     int div) {
-        float a = from;
-        while (a < to) {
-            float b = Math.min(to, a + div);
-            int color = wallColor(volume, index, scaleFactor, wx, wz, to, (a + b) * 0.5f,
-                    surfaceColor, EDGE_SHADE, div);
-            while (b < to) {
-                float c = Math.min(to, b + div);
-                int next = wallColor(volume, index, scaleFactor, wx, wz, to, (b + c) * 0.5f,
-                        surfaceColor, EDGE_SHADE, div);
-                if (next != color) {
-                    break;
-                }
-                b = c;
-            }
-            quads.add(new Quad(x + 1, z, a, x, z, a, x, z, b, x + 1, z, b, color));
-            a = b;
-        }
+    private static void addWallSouth(WallCollector walls, FramedMapVolume volume, int index, int scaleFactor,
+                                     int wx, int wz, float plane, int spanStart, float from, float to,
+                                     int surfaceColor, int div) {
+        addWall(walls, WALL_SOUTH, plane, spanStart, volume, index, scaleFactor, wx, wz,
+                from, to, surfaceColor, EDGE_SHADE, div);
     }
 
-    private static void addWallNorth(List<Quad> quads, FramedMapVolume volume, int index, int scaleFactor,
-                                     int wx, int wz, float x, float z, float from, float to, int surfaceColor,
-                                     int div) {
+    private static void addWallNorth(WallCollector walls, FramedMapVolume volume, int index, int scaleFactor,
+                                     int wx, int wz, float plane, int spanStart, float from, float to,
+                                     int surfaceColor, int div) {
+        addWall(walls, WALL_NORTH, plane, spanStart, volume, index, scaleFactor, wx, wz,
+                from, to, surfaceColor, EDGE_SHADE, div);
+    }
+
+    private static void addWall(WallCollector walls, int dir, float plane, int spanStart,
+                                FramedMapVolume volume, int index, int scaleFactor,
+                                int wx, int wz, float from, float to, int surfaceColor,
+                                float factor, int div) {
         float a = from;
         while (a < to) {
             float b = Math.min(to, a + div);
             int color = wallColor(volume, index, scaleFactor, wx, wz, to, (a + b) * 0.5f,
-                    surfaceColor, EDGE_SHADE, div);
+                    surfaceColor, factor, div);
             while (b < to) {
                 float c = Math.min(to, b + div);
                 int next = wallColor(volume, index, scaleFactor, wx, wz, to, (b + c) * 0.5f,
-                        surfaceColor, EDGE_SHADE, div);
+                        surfaceColor, factor, div);
                 if (next != color) {
                     break;
                 }
                 b = c;
             }
-            quads.add(new Quad(x, z, a, x + 1, z, a, x + 1, z, b, x, z, b, color));
+            walls.add(dir, plane, spanStart, spanStart + 1, a, b, color);
             a = b;
         }
     }
