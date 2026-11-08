@@ -59,7 +59,6 @@ public final class FramedMapConnections {
     private static final Map<Key, Cached> CACHE = new HashMap<>();
     private static final Set<Key> LOGGED_KEYS = new HashSet<>();
     private static final Set<Integer> RIM_LOGGED = new HashSet<>();
-    private static final Map<SingleKey, SingleState> SINGLE = new HashMap<>();
     private static final Map<GroupKey, GroupInfo> GROUP_INFO = new HashMap<>();
     private static final Map<Long, GroupKey> POSITION_GROUP = new HashMap<>();
     /** Positions of large unfinished clusters, valid for a few ticks. */
@@ -84,17 +83,9 @@ public final class FramedMapConnections {
     }
 
     private record Cached(long tick, int frameMask, int textureMask, int worldMask,
-                          int tileDiv, int tileCol, int tileRow, int singleRotation,
+                          int tileDiv, int tileCol, int tileRow,
                           boolean suppress3D, GroupKey group, Vec3 center,
                           boolean[] groupGlow) {
-    }
-
-    private record SingleKey(long pos, int direction, int mapId, ResourceKey<Level> dimension) {
-    }
-
-    private static final class SingleState {
-        int rotation;
-        int entityId = Integer.MIN_VALUE;
     }
 
     private record TileInfo(int div, int col, int row, GroupKey group, boolean suppress3D) {
@@ -246,26 +237,6 @@ public final class FramedMapConnections {
         return leader == pos.asLong();
     }
 
-    /**
-     * Rotation of a floor map whose top points away from the player, so the
-     * map reads like the held preview from the player's side.
-     * 0 = north, 1 = east, 2 = south, 3 = west.
-     */
-    public static int floorPlayerRotation(double centerX, double centerZ, Vec3 eye) {
-        if (eye == null) {
-            return 0;
-        }
-        double dx = eye.x - centerX;
-        double dz = eye.z - centerZ;
-        int playerDirection;
-        if (Math.abs(dx) > Math.abs(dz)) {
-            playerDirection = dx > 0 ? 1 : 3; // east / west
-        } else {
-            playerDirection = dz > 0 ? 2 : 0; // south / north
-        }
-        return (playerDirection + 2) & 3;
-    }
-
     /** Rotates an unrotated source pixel into the displayed mega-map image. */
     public static int rotateSourceX(int x, int z, int rotation) {
         return switch (rotation & 3) {
@@ -340,10 +311,6 @@ public final class FramedMapConnections {
             int textureMask = state.direction.getAxis() == Direction.Axis.Y
                     ? worldTextureMask(worldMask)
                     : textureMask(frameMask, state.rotation);
-            int singleRotation = 0;
-            if (!mega && state.direction == Direction.UP) {
-                singleRotation = singleRotation(level, pos, state, data, camera);
-            }
             // A mega group is one big map; aim LOD at its geometric centre,
             // not at whichever tile happens to submit the shared mesh.
             double centerX = pos.getX() + 0.5;
@@ -359,7 +326,7 @@ public final class FramedMapConnections {
             }
             Vec3 center = new Vec3(centerX, centerY, centerZ);
             cached = new Cached(tick, frameMask, textureMask, worldMask,
-                    tile.div(), tile.col(), tile.row(), singleRotation,
+                    tile.div(), tile.col(), tile.row(),
                     tile.suppress3D(), tile.group(), center,
                     mega && info != null ? info.glowTiles : null);
             if (CACHE.size() > MAX_CACHE) {
@@ -370,7 +337,7 @@ public final class FramedMapConnections {
                     || previous.worldMask() != worldMask || !LOGGED_KEYS.contains(key)) {
                 logSummary(level, pos, state, data, frameMask, textureMask, worldMask,
                         tile.div(), tile.col(), tile.row(),
-                        tile.group() == null ? singleRotation : groupRotation(tile.group()));
+                        tile.group() == null ? 0 : groupRotation(tile.group()));
                 LOGGED_KEYS.add(key);
             }
         }
@@ -387,8 +354,7 @@ public final class FramedMapConnections {
         int frameMask = front ? cached.frameMask() : 0;
         int textureMask = front ? cached.textureMask() : 0;
         int worldMask = front ? cached.worldMask() : 0;
-        int tileRotation = cached.group() != null
-                ? groupRotation(cached.group()) : cached.singleRotation();
+        int tileRotation = cached.group() != null ? groupRotation(cached.group()) : 0;
         int light = state.isGlowFrame ? 15728880 : state.lightCoords;
         int groupLight = -1;
         if (cached.group() != null) {
@@ -419,7 +385,6 @@ public final class FramedMapConnections {
 
     public static void clear() {
         CACHE.clear();
-        SINGLE.clear();
         GROUPS.clear();
         GROUP_INFO.clear();
         POSITION_GROUP.clear();
@@ -724,8 +689,7 @@ public final class FramedMapConnections {
                     initialRotation = GROUPS.get(inherited).rotation;
                     GROUPS.remove(inherited);
                 } else {
-                    initialRotation = state.direction == Direction.UP && camera != null
-                            ? floorPlayerRotation(centerX, centerZ, camera.pos) : 0;
+                    initialRotation = 0;
                 }
             }
             groupState.entities.clear();
@@ -881,28 +845,6 @@ public final class FramedMapConnections {
             mask |= 1 << b.getOpposite().ordinal();
         }
         return mask;
-    }
-
-    /**
-     * Orientation of a lone floor map. It is chosen once, when the map is
-     * first placed, from the direction the player is looking, and then stays
-     * fixed no matter where the player walks.
-     */
-    private static int singleRotation(ClientLevel level, BlockPos pos, ItemFrameRenderState state,
-                                      MapItemSavedData data, CameraRenderState camera) {
-        SingleKey key = new SingleKey(pos.asLong(), state.direction.ordinal(),
-                state.mapId.id(), level.dimension());
-        SingleState stored = SINGLE.computeIfAbsent(key, k -> new SingleState());
-        ItemFrame frame = frameAt(level, pos, state.direction, state.rotation & 3,
-                data, state.mapId, false);
-        if (frame != null && stored.entityId != frame.getId()) {
-            stored.entityId = frame.getId();
-            stored.rotation = floorPlayerRotation(pos.getX() + 0.5, pos.getZ() + 0.5,
-                    camera != null ? camera.pos : null);
-            FramedMapDebug.log("single map={} at={} placed rot={}",
-                    state.mapId.id(), pos, stored.rotation);
-        }
-        return stored.rotation & 3;
     }
 
     private static boolean intersects(Set<Integer> a, Set<Integer> b) {

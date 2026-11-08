@@ -110,20 +110,6 @@ public class ItemFrameRendererMixin {
         MapItemSavedData data = level.getMapData(state.mapId);
         if (data != null) {
             int tileDiv = FramedMapConnections.currentTileDiv();
-            if (ModConfig.get().framedMaps3D
-                    && tileDiv <= 1
-                    && state.direction == Direction.UP) {
-                // A lone floor map keeps the orientation chosen when it was
-                // placed, so walking around it does not spin the picture.
-                // The pose is already translated by -64,-64, so the centre
-                // compensation keeps the map inside its frame.
-                int steps = FramedMapConnections.currentTileRotation();
-                if (steps != 0) {
-                    pose.translate(64.0f, 64.0f, 0.0f);
-                    pose.mulPose(new Matrix4f().rotationZ((float) Math.toRadians(-steps * 90.0f)));
-                    pose.translate(-64.0f, -64.0f, 0.0f);
-                }
-            }
             if (tileDiv > 1) {
                 state.mapRenderState.decorations.clear();
             }
