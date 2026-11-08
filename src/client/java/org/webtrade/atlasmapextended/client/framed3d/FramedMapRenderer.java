@@ -127,6 +127,9 @@ public final class FramedMapRenderer {
     }
 
     private static void logOnce(String key, String message, Object... args) {
+        if (!FramedMapDebug.DETAILED) {
+            return;
+        }
         if (LOGGED.size() > 4096) {
             LOGGED.clear();
         }

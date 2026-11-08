@@ -26,8 +26,12 @@ public final class FramedMapCache {
     /** Columns re-checked per tick to fill in areas that were not loaded during the first pass. */
     private static final int RETRY_COLUMNS_PER_TICK = 512;
     private static final Map<String, Entry> ENTRIES = new HashMap<>();
-    private static final ExecutorService MESH_POOL = Executors.newSingleThreadExecutor(task -> {
-        Thread thread = new Thread(task, "AtlasMap-3D-Mesh");
+    /** Loaded/sampled volumes shared by every rotation/tile of the same map. */
+    private static final Map<FramedMapKey, FramedMapVolume> STORED = new HashMap<>();
+    private static final java.util.concurrent.atomic.AtomicInteger MESH_THREAD =
+            new java.util.concurrent.atomic.AtomicInteger();
+    private static final ExecutorService MESH_POOL = Executors.newFixedThreadPool(2, task -> {
+        Thread thread = new Thread(task, "AtlasMap-3D-Mesh-" + MESH_THREAD.incrementAndGet());
         thread.setDaemon(true);
         return thread;
     });
@@ -50,6 +54,7 @@ public final class FramedMapCache {
         boolean sampling;
         boolean building;
         boolean dirty;
+        boolean complete;
         int buildGeneration = -1;
         int generation;
         FramedMapMesh mesh;
@@ -86,38 +91,49 @@ public final class FramedMapCache {
         int rotation = div > 1 ? tileRotation & 3 : 0;
         String id = key.dimension().identifier() + "#" + key.mapId() + "#" + mask
                 + "@" + div + ":" + tileCol + ":" + tileRow + ":" + rotation;
-        long hash = Arrays.hashCode(data.colors);
 
         Entry entry = ENTRIES.get(id);
         if (entry == null) {
+            long hash = Arrays.hashCode(data.colors);
             entry = new Entry(key, mask, div, tileCol, tileRow, rotation);
             entry.overlay = FramedOverlayStorage.getOrCapture(key);
-            FramedMapVolume stored = FramedMapStorage.load(key);
+            FramedMapVolume stored = STORED.get(key);
+            if (stored == null) {
+                stored = FramedMapStorage.load(key);
+                if (stored != null) {
+                    STORED.put(key, stored);
+                }
+            }
             if (stored != null) {
-                entry.volume = stored;
+                boolean complete = validCount(stored) == FramedMapVolume.COLUMNS;
+                entry.volume = complete ? stored : stored.copy();
+                entry.complete = complete;
                 entry.exploredHash = hash;
                 entry.builtHash = hash;
-                FramedMapDebug.log("cache map={} mask={} center={},{} tile={}x{} col={} row={} scale={} loaded stored volume, valid={}",
+                FramedMapDebug.detail("cache map={} mask={} center={},{} tile={}x{} col={} row={} scale={} loaded stored volume, valid={}",
                         mapId.id(), mask, data.centerX, data.centerZ,
                         div, div, tileCol, tileRow, data.scale, validCount(entry.volume));
                 startBuild(entry);
             } else {
-                FramedMapDebug.log("cache map={} mask={} center={},{} tile={}x{} col={} row={} scale={} start sampling",
+                FramedMapDebug.detail("cache map={} mask={} center={},{} tile={}x{} col={} row={} scale={} start sampling",
                         mapId.id(), mask, data.centerX, data.centerZ,
                         div, div, tileCol, tileRow, data.scale);
                 startSampling(entry, hash);
             }
             ENTRIES.put(id, entry);
         } else if (!entry.key.sameGeometry(key)) {
+            long hash = Arrays.hashCode(data.colors);
             entry = new Entry(key, mask, div, tileCol, tileRow, rotation);
             entry.overlay = FramedOverlayStorage.getOrCapture(key);
             startSampling(entry, hash);
             ENTRIES.put(id, entry);
         } else if (!entry.sampling && !entry.building && entry.mesh != null
-                && entry.builtHash != hash
                 && level.getGameTime() - entry.lastBuildTick > 100) {
             // the map was explored further: rebuild in the background, keep the old mesh visible
-            startSampling(entry, hash);
+            long hash = Arrays.hashCode(data.colors);
+            if (entry.builtHash != hash) {
+                startSampling(entry, hash);
+            }
         }
 
         return entry.mesh;
@@ -136,7 +152,8 @@ public final class FramedMapCache {
     }
 
     private static void startSampling(Entry entry, long hash) {
-        entry.volume.clear();
+        entry.volume = new FramedMapVolume();
+        entry.complete = false;
         entry.exploredHash = hash;
         entry.cursor = 0;
         entry.retryCursor = 0;
@@ -163,7 +180,9 @@ public final class FramedMapCache {
                 }
                 if (entry.cursor >= FramedMapVolume.COLUMNS) {
                     entry.sampling = false;
-                    FramedMapDebug.log("sampled map={} mask={} valid={}", entry.key.mapId(), entry.mask,
+                    entry.complete = validCount(entry.volume) == FramedMapVolume.COLUMNS;
+                    STORED.put(entry.key, entry.volume);
+                    FramedMapDebug.detail("sampled map={} mask={} valid={}", entry.key.mapId(), entry.mask,
                             validCount(entry.volume));
                     FramedMapStorage.save(entry.key, entry.volume);
                     startBuild(entry);
@@ -214,27 +233,6 @@ public final class FramedMapCache {
         if (entry.building && entry.buildGeneration == entry.generation) {
             return;
         }
-        int minSurface = Integer.MAX_VALUE;
-        int maxSurface = Integer.MIN_VALUE;
-        int valid = 0;
-        for (int i = 0; i < FramedMapVolume.COLUMNS; i++) {
-            if (entry.volume.valid[i]) {
-                valid++;
-                minSurface = Math.min(minSurface, entry.volume.surfaceY[i]);
-                maxSurface = Math.max(maxSurface, entry.volume.surfaceY[i]);
-            }
-        }
-        if (valid == 0) {
-            entry.building = false;
-            FramedMapDebug.log("build map={} mask={} skipped: no valid columns", entry.key.mapId(), entry.mask);
-            return;
-        }
-        int mainY = chooseStartY(ModConfig.get().framedMapsStartY, minSurface, maxSurface);
-        // The configured level is the "main" height; terrain up to 20 blocks
-        // below it is still part of the relief and forms the map's base.
-        int startY = Math.max(entry.key.minY(), mainY - BELOW_BASELINE);
-        FramedMapDebug.log("build map={} mask={} valid={} startY={} surface={}..{}",
-                entry.key.mapId(), entry.mask, valid, startY, minSurface, maxSurface);
         entry.building = true;
         entry.buildGeneration = entry.generation;
         int generation = entry.generation;
@@ -243,24 +241,59 @@ public final class FramedMapCache {
             overlay = FramedOverlayStorage.getOrCapture(entry.key);
             entry.overlay = overlay;
         }
-        FramedMapVolume snapshot = entry.volume.copy();
         FramedMapKey key = entry.key;
         long hash = entry.exploredHash;
         FramedMapOverlay snapshotOverlay = overlay;
+        // A complete volume is never mutated while the entry is building, so
+        // the worker can read the shared arrays directly. Incomplete volumes
+        // are rare; copy them before leaving the client thread.
+        FramedMapVolume source = entry.complete ? entry.volume : entry.volume.copy();
+        int mask = entry.mask;
+        int div = entry.tileDiv;
+        int col = entry.tileCol;
+        int row = entry.tileRow;
+        int rotation = entry.tileRotation;
         MESH_POOL.execute(() -> {
+            int minSurface = Integer.MAX_VALUE;
+            int maxSurface = Integer.MIN_VALUE;
+            int valid = 0;
+            for (int i = 0; i < FramedMapVolume.COLUMNS; i++) {
+                if (source.valid[i]) {
+                    valid++;
+                    minSurface = Math.min(minSurface, source.surfaceY[i]);
+                    maxSurface = Math.max(maxSurface, source.surfaceY[i]);
+                }
+            }
+            if (valid == 0) {
+                FramedMapDebug.detail("build map={} mask={} skipped: no valid columns", key.mapId(), mask);
+                Minecraft.getInstance().execute(() -> {
+                    if (ENTRIES.get(entry.id) == entry) {
+                        entry.building = false;
+                    }
+                });
+                return;
+            }
+            int mainY = chooseStartY(ModConfig.get().framedMapsStartY, minSurface, maxSurface);
+            // The configured level is the "main" height; terrain up to 20
+            // blocks below it is still part of the relief and forms the base.
+            int startY = Math.max(key.minY(), mainY - BELOW_BASELINE);
+            FramedMapDebug.detail("build map={} mask={} valid={} startY={} surface={}..{}",
+                    key.mapId(), mask, valid, startY, minSurface, maxSurface);
             FramedMapMesh mesh;
             try {
-                FramedMapDebug.log("meshing start map={} mask={} tile={}x{} col={} row={}",
-                        entry.key.mapId(), entry.mask, entry.tileDiv, entry.tileDiv,
-                        entry.tileCol, entry.tileRow);
-                mesh = FramedMapMesher.build(snapshot, key, startY, snapshotOverlay, entry.mask, entry.tileDiv, entry.tileCol, entry.tileRow, entry.tileRotation);
-                FramedMapDebug.log("meshing done map={} mask={} tile={}x{} col={} row={} quads={}",
-                        entry.key.mapId(), entry.mask, entry.tileDiv, entry.tileDiv,
-                        entry.tileCol, entry.tileRow, mesh.quadCount());
+                FramedMapDebug.detail("meshing start map={} mask={} tile={}x{} col={} row={}",
+                        key.mapId(), mask, div, div, col, row);
+                mesh = FramedMapMesher.build(source, key, startY, snapshotOverlay, mask, div, col, row, rotation);
+                FramedMapDebug.detail("meshing done map={} mask={} tile={}x{} col={} row={} quads={}",
+                        key.mapId(), mask, div, div, col, row, mesh.quadCount());
             } catch (Throwable t) {
                 Storage.LOG.error("[AtlasMap3D] mesh build failed map={} mask={} tile={}x{} col={} row={}",
-                        entry.key.mapId(), entry.mask, entry.tileDiv, entry.tileDiv,
-                        entry.tileCol, entry.tileRow, t);
+                        key.mapId(), mask, div, div, col, row, t);
+                Minecraft.getInstance().execute(() -> {
+                    if (ENTRIES.get(entry.id) == entry) {
+                        entry.building = false;
+                    }
+                });
                 return;
             }
             Minecraft.getInstance().execute(() -> {
@@ -273,7 +306,7 @@ public final class FramedMapCache {
                 entry.building = false;
                 entry.lastBuildTick = Minecraft.getInstance().level != null
                         ? Minecraft.getInstance().level.getGameTime() : 0L;
-                FramedMapDebug.log("built map={} mask={} quads={} lines={} icons={}",
+                FramedMapDebug.detail("built map={} mask={} quads={} lines={} icons={}",
                         entry.key.mapId(), entry.mask, mesh.quadCount(), mesh.lineCount(),
                         mesh.voxelIcons().size());
             });
@@ -310,5 +343,6 @@ public final class FramedMapCache {
 
     public static void clear() {
         ENTRIES.clear();
+        STORED.clear();
     }
 }

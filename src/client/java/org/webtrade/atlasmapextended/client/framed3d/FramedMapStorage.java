@@ -131,7 +131,7 @@ public final class FramedMapStorage {
                 FramedMapDebug.log("storage map={} ignored empty stored volume", key.mapId());
                 return null;
             }
-            FramedMapDebug.log("storage map={} loaded valid={}", key.mapId(), valid);
+            FramedMapDebug.detail("storage map={} loaded valid={}", key.mapId(), valid);
             return volume;
         } catch (IOException e) {
             Storage.LOG.warn("[AtlasMap3D] could not load {}", path, e);

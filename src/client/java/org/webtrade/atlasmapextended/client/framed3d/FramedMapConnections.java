@@ -50,11 +50,14 @@ public final class FramedMapConnections {
 
     private static final Identifier WHITE = Paper.id("textures/gui/white.png");
     private static final int CACHE_TICKS = 10;
+    private static final int GROUP_TICKS = 10;
     private static final int MAX_CACHE = 8192;
     private static final Map<Key, Cached> CACHE = new HashMap<>();
     private static final Set<Key> LOGGED_KEYS = new HashSet<>();
     private static final Set<Integer> RIM_LOGGED = new HashSet<>();
     private static final Map<SingleKey, SingleState> SINGLE = new HashMap<>();
+    private static final Map<GroupKey, GroupInfo> GROUP_INFO = new HashMap<>();
+    private static final Map<Long, GroupKey> POSITION_GROUP = new HashMap<>();
     private static Context current;
 
     private FramedMapConnections() {
@@ -86,6 +89,33 @@ public final class FramedMapConnections {
 
     private record GroupKey(long anchor, int div, int direction, int mapId,
                             ResourceKey<Level> dimension) {
+    }
+
+    /** Cached geometry of one complete mega group, shared by all its tiles. */
+    private static final class GroupInfo {
+        final GroupKey key;
+        final int div;
+        final int minR;
+        final int minD;
+        final Direction imgRight;
+        final Direction imgDown;
+        final Set<Long> members = new HashSet<>();
+        long scanTick;
+
+        GroupInfo(GroupKey key, int div, int minR, int minD,
+                  Direction imgRight, Direction imgDown) {
+            this.key = key;
+            this.div = div;
+            this.minR = minR;
+            this.minD = minD;
+            this.imgRight = imgRight;
+            this.imgDown = imgDown;
+        }
+
+        TileInfo tileAt(BlockPos pos) {
+            return new TileInfo(div, dot(pos, imgRight) - minR,
+                    dot(pos, imgDown) - minD, key);
+        }
     }
 
     private static final class GroupState {
@@ -199,13 +229,20 @@ public final class FramedMapConnections {
             Cached previous = cached;
             TileInfo tile = computeTile(level, pos, state, data, camera);
             boolean mega = tile.div() > 1;
+            int frameRotation = state.rotation & 3;
+            GroupInfo info = mega ? GROUP_INFO.get(tile.group()) : null;
             if (mega) {
+                updateGroupRotation(tile.group(), pos, frameRotation);
                 // The whole mega-map has one orientation; a rotation of any
                 // frame changes the common rotation instead of one tile.
                 state.rotation = 0;
             }
-            int frameMask = computeFrameMask(level, pos, state, data, state.mapId, mega);
-            int worldMask = computeWorldMask(level, pos, state, data, state.mapId, mega);
+            int frameMask = mega && info != null
+                    ? frameMaskFromInfo(info, pos, state)
+                    : computeFrameMask(level, pos, state, data, state.mapId, mega);
+            int worldMask = mega && info != null
+                    ? worldMaskFromInfo(info, pos, state)
+                    : computeWorldMask(level, pos, state, data, state.mapId, mega);
             int textureMask = state.direction.getAxis() == Direction.Axis.Y
                     ? worldTextureMask(worldMask)
                     : textureMask(frameMask, state.rotation);
@@ -256,6 +293,8 @@ public final class FramedMapConnections {
         CACHE.clear();
         SINGLE.clear();
         GROUPS.clear();
+        GROUP_INFO.clear();
+        POSITION_GROUP.clear();
         LOGGED_KEYS.clear();
         RIM_LOGGED.clear();
         FramedMapRenderer.clearDiagnostics();
@@ -378,6 +417,19 @@ public final class FramedMapConnections {
         if (state.mapId == null) {
             return none;
         }
+        long startLong = start.asLong();
+        GroupKey known = POSITION_GROUP.get(startLong);
+        if (known != null) {
+            GroupInfo info = GROUP_INFO.get(known);
+            long tick = level.getGameTime();
+            if (info != null && tick - info.scanTick < GROUP_TICKS
+                    && known.mapId() == state.mapId.id()
+                    && known.direction() == state.direction.ordinal()
+                    && known.dimension().equals(level.dimension())
+                    && info.members.contains(startLong)) {
+                return info.tileAt(start);
+            }
+        }
         Direction localX;
         Direction localY;
         switch (state.direction) {
@@ -450,6 +502,18 @@ public final class FramedMapConnections {
         int cols = maxR - minR + 1;
         int rows = maxD - minD + 1;
         if (cols <= 1 || cols != rows || count != cols * rows) {
+            // The group broke: drop its cached geometry so the remaining
+            // frames do not keep rendering stale mega tiles.
+            GroupKey stale = POSITION_GROUP.remove(startLong);
+            if (stale != null) {
+                GroupInfo old = GROUP_INFO.remove(stale);
+                if (old != null) {
+                    for (long member : old.members) {
+                        POSITION_GROUP.remove(member, stale);
+                    }
+                }
+                CACHE.clear();
+            }
             return none;
         }
         int col = dot(start, imgRight) - minR;
@@ -519,12 +583,125 @@ public final class FramedMapConnections {
                 }
             }
         }
-        return new TileInfo(cols, col, row, group);
+        Set<Long> currentMembers = new HashSet<>();
+        for (BlockPos member : members.keySet()) {
+            currentMembers.add(member.asLong());
+        }
+        GroupInfo info = new GroupInfo(group, cols, minR, minD, imgRight, imgDown);
+        info.members.addAll(currentMembers);
+        info.scanTick = level.getGameTime();
+        GroupInfo old = GROUP_INFO.put(group, info);
+        if (old != null) {
+            for (long member : old.members) {
+                POSITION_GROUP.remove(member, group);
+            }
+        }
+        for (long member : currentMembers) {
+            POSITION_GROUP.put(member, group);
+        }
+        // Drop geometries of a previous shape that shared these frames.
+        GROUP_INFO.entrySet().removeIf(entry -> {
+            if (entry.getKey().equals(group)) {
+                return false;
+            }
+            if (intersectsLong(entry.getValue().members, currentMembers)) {
+                for (long member : entry.getValue().members) {
+                    POSITION_GROUP.remove(member, entry.getKey());
+                }
+                return true;
+            }
+            return false;
+        });
+        return info.tileAt(start);
     }
 
     private static int groupRotation(GroupKey group) {
         GroupState state = GROUPS.get(group);
         return state == null ? 0 : state.rotation & 3;
+    }
+
+    /** Cheap per-frame rotation check for a mega group, without a BFS. */
+    private static void updateGroupRotation(GroupKey group, BlockPos pos, int current) {
+        GroupState state = GROUPS.get(group);
+        if (state == null) {
+            return;
+        }
+        long id = pos.asLong();
+        Integer previous = state.last.get(id);
+        if (previous == null) {
+            state.last.put(id, current);
+        } else if (current != previous) {
+            state.rotation = (state.rotation + current - previous) & 3;
+            state.last.put(id, current);
+            FramedMapDebug.log("group rotate map={} tile={}x{} at={} rot={}",
+                    group.mapId(), group.div(), group.div(), pos, state.rotation);
+        }
+    }
+
+    private static int frameMaskFromInfo(GroupInfo info, BlockPos pos, ItemFrameRenderState state) {
+        Direction right;
+        Direction up;
+        Direction dir = state.direction;
+        if (dir.getAxis() == Direction.Axis.Y) {
+            right = Direction.WEST;
+            up = dir == Direction.UP ? Direction.SOUTH : Direction.NORTH;
+        } else {
+            up = Direction.UP;
+            right = switch (dir) {
+                case SOUTH -> Direction.WEST;
+                case NORTH -> Direction.EAST;
+                case EAST -> Direction.SOUTH;
+                case WEST -> Direction.NORTH;
+                default -> Direction.EAST;
+            };
+        }
+        int mask = 0;
+        if (info.members.contains(pos.relative(right).asLong())) {
+            mask |= SIDE_POS_X;
+        }
+        if (info.members.contains(pos.relative(right.getOpposite()).asLong())) {
+            mask |= SIDE_NEG_X;
+        }
+        if (info.members.contains(pos.relative(up).asLong())) {
+            mask |= SIDE_POS_Y;
+        }
+        if (info.members.contains(pos.relative(up.getOpposite()).asLong())) {
+            mask |= SIDE_NEG_Y;
+        }
+        return mask;
+    }
+
+    private static int worldMaskFromInfo(GroupInfo info, BlockPos pos, ItemFrameRenderState state) {
+        Direction a;
+        Direction b;
+        switch (state.direction.getAxis()) {
+            case Y -> {
+                a = Direction.EAST;
+                b = Direction.SOUTH;
+            }
+            case Z -> {
+                a = Direction.EAST;
+                b = Direction.UP;
+            }
+            default -> {
+                a = Direction.SOUTH;
+                b = Direction.UP;
+            }
+        }
+        int mask = 0;
+        if (info.members.contains(pos.relative(a).asLong())) {
+            mask |= 1 << a.ordinal();
+        }
+        if (info.members.contains(pos.relative(a.getOpposite()).asLong())) {
+            mask |= 1 << a.getOpposite().ordinal();
+        }
+        if (info.members.contains(pos.relative(b).asLong())) {
+            mask |= 1 << b.ordinal();
+        }
+        if (info.members.contains(pos.relative(b.getOpposite()).asLong())) {
+            mask |= 1 << b.getOpposite().ordinal();
+        }
+        return mask;
     }
 
     /**
@@ -556,6 +733,20 @@ public final class FramedMapConnections {
         Set<Integer> small = a.size() <= b.size() ? a : b;
         Set<Integer> large = small == a ? b : a;
         for (Integer id : small) {
+            if (large.contains(id)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean intersectsLong(Set<Long> a, Set<Long> b) {
+        if (a.isEmpty() || b.isEmpty()) {
+            return false;
+        }
+        Set<Long> small = a.size() <= b.size() ? a : b;
+        Set<Long> large = small == a ? b : a;
+        for (Long id : small) {
             if (large.contains(id)) {
                 return true;
             }
@@ -652,7 +843,7 @@ public final class FramedMapConnections {
     private static void logSummary(ClientLevel level, BlockPos pos, ItemFrameRenderState state,
                                    MapItemSavedData data, int frameMask, int textureMask, int worldMask,
                                    int tileDiv, int tileCol, int tileRow, int tileRotation) {
-        if (!FramedMapDebug.ENABLED) {
+        if (!FramedMapDebug.ENABLED || !FramedMapDebug.DETAILED) {
             return;
         }
         FramedMapDebug.log("frame {} map={} center={},{} tile={}x{} col={} row={} scale={} dim={} dir={} rot={} frameRot={} mask={} tex={} world={}",
