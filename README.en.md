@@ -17,6 +17,12 @@ A client-side mod full-screen world map and minimap, markers with icons, descrip
 
 > This mod was created and ported with the help of the AI based on the ideas of the author and viewers.
 
+<div align="center">
+
+  [<img width="900" alt="Download on CurseForge" src="images/curseforge_banner_en.png">](https://www.curseforge.com/minecraft/mc-mods/atlas-map-extended)
+
+</div>
+
 ## Gallery
 
 | World Map | Minimap |
@@ -93,3 +99,4 @@ Game tests with screenshots are available on the `26.1` and `26.3` branches (Fab
 
 - **Mod author:** [erkinpaw](https://github.com/erkinpaw) · **License:** [MIT](https://github.com/byMr712/AtlasMapExtended-MinecraftMod/blob/26.3/LICENSE).  
 - **Author of the port to Fabric/NeoForge 1.21:** [Mr712](https://github.com/byMr712/AtlasMapExtended-MinecraftMod) · **License:** [Apache License 2.0](LICENSE).
+
