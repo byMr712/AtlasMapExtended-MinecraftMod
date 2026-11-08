@@ -68,7 +68,7 @@ public class ItemFrameRendererMixin {
         FramedMapConnections.Context context = FramedMapConnections.context();
         if (context != null && context.hideFrame()) {
             FramedMapConnections.renderOuterFrame(
-                    pose, collector, context.frameMask(), context.glow(), context.light());
+                    pose, collector, context.worldMask(), context.glow(), context.light());
             return;
         }
         model.submitWithZOffset(pose, collector, light, overlay, outlineColor);

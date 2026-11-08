@@ -62,8 +62,7 @@ public final class FramedMapCache {
     /** Called from the item frame renderer. Returns null until the mesh is ready. */
     public static FramedMapMesh getOrRequest(ClientLevel level, MapId mapId, MapItemSavedData data,
                                              int textureMask) {
-        if (!ModConfig.get().framedMaps3D || data.colors == null
-                || !data.dimension.equals(level.dimension())) {
+        if (!ModConfig.get().framedMaps3D || data.colors == null) {
             return null;
         }
 
@@ -84,8 +83,12 @@ public final class FramedMapCache {
                 entry.volume = stored;
                 entry.exploredHash = hash;
                 entry.builtHash = hash;
+                FramedMapDebug.log("cache map={} mask={} center={},{} scale={} loaded stored volume, valid={}",
+                        mapId.id(), mask, data.centerX, data.centerZ, data.scale, validCount(entry.volume));
                 startBuild(entry);
             } else {
+                FramedMapDebug.log("cache map={} mask={} center={},{} scale={} start sampling",
+                        mapId.id(), mask, data.centerX, data.centerZ, data.scale);
                 startSampling(entry, hash);
             }
             ENTRIES.put(id, entry);
@@ -110,8 +113,7 @@ public final class FramedMapCache {
      * frame far away later.
      */
     public static void prepareHeld(ClientLevel level, MapId mapId, MapItemSavedData data) {
-        if (!ModConfig.get().framedMaps3D || data.colors == null
-                || !data.dimension.equals(level.dimension())) {
+        if (!ModConfig.get().framedMaps3D || data.colors == null) {
             return;
         }
         getOrRequest(level, mapId, data, 0);
@@ -145,6 +147,8 @@ public final class FramedMapCache {
                 }
                 if (entry.cursor >= FramedMapVolume.COLUMNS) {
                     entry.sampling = false;
+                    FramedMapDebug.log("sampled map={} mask={} valid={}", entry.key.mapId(), entry.mask,
+                            validCount(entry.volume));
                     FramedMapStorage.save(entry.key, entry.volume);
                     startBuild(entry);
                 }
@@ -196,16 +200,25 @@ public final class FramedMapCache {
         }
         int minSurface = Integer.MAX_VALUE;
         int maxSurface = Integer.MIN_VALUE;
+        int valid = 0;
         for (int i = 0; i < FramedMapVolume.COLUMNS; i++) {
             if (entry.volume.valid[i]) {
+                valid++;
                 minSurface = Math.min(minSurface, entry.volume.surfaceY[i]);
                 maxSurface = Math.max(maxSurface, entry.volume.surfaceY[i]);
             }
+        }
+        if (valid == 0) {
+            entry.building = false;
+            FramedMapDebug.log("build map={} mask={} skipped: no valid columns", entry.key.mapId(), entry.mask);
+            return;
         }
         int mainY = chooseStartY(ModConfig.get().framedMapsStartY, minSurface, maxSurface);
         // The configured level is the "main" height; terrain up to 20 blocks
         // below it is still part of the relief and forms the map's base.
         int startY = Math.max(entry.key.minY(), mainY - BELOW_BASELINE);
+        FramedMapDebug.log("build map={} mask={} valid={} startY={} surface={}..{}",
+                entry.key.mapId(), entry.mask, valid, startY, minSurface, maxSurface);
         entry.building = true;
         entry.buildGeneration = entry.generation;
         int generation = entry.generation;
@@ -230,8 +243,21 @@ public final class FramedMapCache {
                 entry.building = false;
                 entry.lastBuildTick = Minecraft.getInstance().level != null
                         ? Minecraft.getInstance().level.getGameTime() : 0L;
+                FramedMapDebug.log("built map={} mask={} quads={} lines={} icons={}",
+                        entry.key.mapId(), entry.mask, mesh.quadCount(), mesh.lineCount(),
+                        mesh.voxelIcons().size());
             });
         });
+    }
+
+    private static int validCount(FramedMapVolume volume) {
+        int valid = 0;
+        for (int i = 0; i < FramedMapVolume.COLUMNS; i++) {
+            if (volume.valid[i]) {
+                valid++;
+            }
+        }
+        return valid;
     }
 
     /**

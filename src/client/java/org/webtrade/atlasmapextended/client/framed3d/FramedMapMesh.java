@@ -28,6 +28,10 @@ public final class FramedMapMesh {
         this.voxelIcons = voxelIcons;
     }
 
+    public int quadCount() {
+        return count;
+    }
+
     public int lineCount() {
         return lineCount;
     }
