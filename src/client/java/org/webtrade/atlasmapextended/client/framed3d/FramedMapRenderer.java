@@ -30,7 +30,8 @@ public final class FramedMapRenderer {
     private FramedMapRenderer() {
     }
 
-    public static void render(ItemFrameRenderState state, PoseStack pose, SubmitNodeCollector collector) {
+    public static void render(ItemFrameRenderState state, PoseStack pose, SubmitNodeCollector collector,
+                              int textureMask) {
         if (!ModConfig.get().framedMaps3D || state.mapId == null) {
             return;
         }
@@ -45,7 +46,7 @@ public final class FramedMapRenderer {
             return;
         }
 
-        FramedMapMesh mesh = FramedMapCache.getOrRequest(level, state.mapId, data);
+        FramedMapMesh mesh = FramedMapCache.getOrRequest(level, state.mapId, data, textureMask);
         if (mesh == null) {
             return;
         }
@@ -56,7 +57,7 @@ public final class FramedMapRenderer {
         int light = state.isGlowFrame ? 15728880 : state.lightCoords;
         pose.pushPose();
         pose.scale(1.0f, 1.0f, -1.0f);
-        collector.submitCustomGeometry(pose, RenderTypes.entityCutout(WHITE),
+        collector.submitCustomGeometry(pose, RenderTypes.entityCutout(WHITE, false),
                 (p, consumer) -> mesh.emit(p.pose(), consumer, meshBrightness, light));
         if (mesh.lineCount() > 0) {
             collector.submitCustomGeometry(pose, RenderTypes.lines(),
@@ -66,7 +67,7 @@ public final class FramedMapRenderer {
         boolean verticalFrame = state.direction != null && state.direction.getAxis().isVertical();
         float standUp = (float) Math.toRadians(state.direction == Direction.DOWN ? 90.0 : -90.0);
         if (!mesh.voxelIcons().isEmpty()) {
-            collector.submitCustomGeometry(pose, RenderTypes.entityCutout(WHITE), (p, consumer) -> {
+            collector.submitCustomGeometry(pose, RenderTypes.entityCutout(WHITE, false), (p, consumer) -> {
                 Matrix4f base = p.pose();
                 for (FramedMapMesh.VoxelIcon icon : mesh.voxelIcons()) {
                     IconVoxelShapes.Shape shape = IconVoxelShapes.get(icon.icon(), icon.tint());

@@ -8,8 +8,10 @@ import net.minecraft.world.level.material.MapColor;
 import net.minecraft.world.level.saveddata.maps.MapId;
 import net.minecraft.world.level.saveddata.maps.MapItemSavedData;
 import org.webtrade.atlasmapextended.client.data.Marker;
+import org.webtrade.atlasmapextended.client.data.ModConfig;
 import org.webtrade.atlasmapextended.client.data.Region;
 import org.webtrade.atlasmapextended.client.data.Stroke;
+import org.webtrade.atlasmapextended.client.framed3d.FramedMapConnections;
 import org.webtrade.atlasmapextended.client.framed3d.FramedMapKey;
 import org.webtrade.atlasmapextended.client.framed3d.FramedMapOverlay;
 import org.webtrade.atlasmapextended.client.framed3d.FramedOverlayStorage;
@@ -51,25 +53,31 @@ public final class HeldMapTextures {
     }
 
     public static Identifier get(MapId mapId, MapItemSavedData data) {
-        return get(mapId, data, true);
+        return get(mapId, data, true, 0);
     }
 
-    /** Frame base: papyrus map without the 2D snapshot overlay (the 3D layer has it). */
+    /** Frame base: with 3D disabled it also gets the 2D snapshot overlay. */
     public static Identifier getFramed(MapId mapId, MapItemSavedData data) {
-        return get(mapId, data, false);
+        return getFramed(mapId, data, 0);
     }
 
-    private static Identifier get(MapId mapId, MapItemSavedData data, boolean withOverlay) {
+    public static Identifier getFramed(MapId mapId, MapItemSavedData data, int textureMask) {
+        return get(mapId, data, !ModConfig.get().framedMaps3D, textureMask);
+    }
+
+    private static Identifier get(MapId mapId, MapItemSavedData data, boolean withOverlay, int textureMask) {
         if (data.colors == null) {
             return null;
         }
         int id = mapId.id();
+        int mask = textureMask & 0x0F;
         FramedMapOverlay overlay = withOverlay ? overlayFor(mapId, data) : null;
-        long hash = Arrays.hashCode(data.colors) * 31L + (overlay == null ? 0 : 1) + (withOverlay ? 1 : 0);
-        String cacheKey = id + (withOverlay ? "h" : "f");
+        long hash = Arrays.hashCode(data.colors) * 31L + (overlay == null ? 0 : 1)
+                + (withOverlay ? 1 : 0) + mask * 17L;
+        String cacheKey = id + (withOverlay ? "h" : "f") + "_" + mask;
         Entry entry = ENTRIES.get(cacheKey);
         if (entry == null) {
-            Identifier textureId = Paper.id((withOverlay ? "held_map/" : "framed_map/") + id);
+            Identifier textureId = Paper.id((withOverlay ? "held_map/" : "framed_map/") + id + "_" + mask);
             DynamicTexture texture = new DynamicTexture(
                     () -> "atlasmap-held-" + id, SIZE, SIZE, false);
             Minecraft.getInstance().getTextureManager().register(textureId, texture);
@@ -78,7 +86,7 @@ public final class HeldMapTextures {
         }
         if (entry.hash != hash) {
             entry.hash = hash;
-            paint(entry.texture.getPixels(), data.colors, overlay, data);
+            paint(entry.texture.getPixels(), data.colors, overlay, data, mask);
             entry.texture.upload();
         }
         return entry.id;
@@ -107,7 +115,7 @@ public final class HeldMapTextures {
     }
 
     private static void paint(NativeImage image, byte[] colors, FramedMapOverlay overlay,
-                              MapItemSavedData data) {
+                              MapItemSavedData data, int textureMask) {
         // Prefer the mod's own tiles: they already carry the height shading and
         // water-depth palette used by the minimap and the world map.
         MapSession session = MapManager.live();
@@ -144,10 +152,19 @@ public final class HeldMapTextures {
             paintOverlay(image, overlay);
         }
 
+        boolean leftJoined = (textureMask & FramedMapConnections.TEX_LEFT) != 0;
+        boolean rightJoined = (textureMask & FramedMapConnections.TEX_RIGHT) != 0;
+        boolean topJoined = (textureMask & FramedMapConnections.TEX_TOP) != 0;
+        boolean bottomJoined = (textureMask & FramedMapConnections.TEX_BOTTOM) != 0;
         for (int y = 0; y < SIZE; y++) {
             for (int x = 0; x < SIZE; x++) {
-                if (x < BORDER || y < BORDER || x >= SIZE - BORDER || y >= SIZE - BORDER) {
-                    boolean line = x == 1 || y == 1 || x == SIZE - 2 || y == SIZE - 2;
+                boolean left = x < BORDER && !leftJoined;
+                boolean right = x >= SIZE - BORDER && !rightJoined;
+                boolean top = y < BORDER && !topJoined;
+                boolean bottom = y >= SIZE - BORDER && !bottomJoined;
+                if (left || right || top || bottom) {
+                    boolean line = (left && x == 1) || (right && x == SIZE - 2)
+                            || (top && y == 1) || (bottom && y == SIZE - 2);
                     image.setPixelABGR(x, y, abgr(line ? INK : PAPER));
                 }
             }

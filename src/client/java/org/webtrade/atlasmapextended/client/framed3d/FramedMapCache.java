@@ -36,6 +36,7 @@ public final class FramedMapCache {
 
     private static final class Entry {
         final FramedMapKey key;
+        final int mask;
         final String id;
         FramedMapVolume volume = new FramedMapVolume();
         long exploredHash;
@@ -51,15 +52,18 @@ public final class FramedMapCache {
         long builtHash;
         long lastBuildTick;
 
-        Entry(FramedMapKey key) {
+        Entry(FramedMapKey key, int mask) {
             this.key = key;
-            this.id = key.dimension().identifier() + "#" + key.mapId();
+            this.mask = mask & 0x0F;
+            this.id = key.dimension().identifier() + "#" + key.mapId() + "#" + this.mask;
         }
     }
 
     /** Called from the item frame renderer. Returns null until the mesh is ready. */
-    public static FramedMapMesh getOrRequest(ClientLevel level, MapId mapId, MapItemSavedData data) {
-        if (!ModConfig.get().framedMaps3D || data.colors == null) {
+    public static FramedMapMesh getOrRequest(ClientLevel level, MapId mapId, MapItemSavedData data,
+                                             int textureMask) {
+        if (!ModConfig.get().framedMaps3D || data.colors == null
+                || !data.dimension.equals(level.dimension())) {
             return null;
         }
 
@@ -67,12 +71,13 @@ public final class FramedMapCache {
                 data.dimension, mapId.id(),
                 data.centerX, data.centerZ, data.scale,
                 level.getMinY(), level.getHeight());
-        String id = key.dimension().identifier() + "#" + key.mapId();
+        int mask = textureMask & 0x0F;
+        String id = key.dimension().identifier() + "#" + key.mapId() + "#" + mask;
         long hash = Arrays.hashCode(data.colors);
 
         Entry entry = ENTRIES.get(id);
         if (entry == null) {
-            entry = new Entry(key);
+            entry = new Entry(key, mask);
             entry.overlay = FramedOverlayStorage.getOrCapture(key);
             FramedMapVolume stored = FramedMapStorage.load(key);
             if (stored != null) {
@@ -85,7 +90,7 @@ public final class FramedMapCache {
             }
             ENTRIES.put(id, entry);
         } else if (!entry.key.sameGeometry(key)) {
-            entry = new Entry(key);
+            entry = new Entry(key, mask);
             entry.overlay = FramedOverlayStorage.getOrCapture(key);
             startSampling(entry, hash);
             ENTRIES.put(id, entry);
@@ -201,7 +206,7 @@ public final class FramedMapCache {
         long hash = entry.exploredHash;
         FramedMapOverlay snapshotOverlay = overlay;
         MESH_POOL.execute(() -> {
-            FramedMapMesh mesh = FramedMapMesher.build(snapshot, key, startY, snapshotOverlay);
+            FramedMapMesh mesh = FramedMapMesher.build(snapshot, key, startY, snapshotOverlay, entry.mask);
             Minecraft.getInstance().execute(() -> {
                 Entry current = ENTRIES.get(entry.id);
                 if (current != entry || entry.generation != generation) {
@@ -217,22 +222,21 @@ public final class FramedMapCache {
     }
 
     /**
-     * Y=60 (or the configured value) is used while it is near the map's own
-     * surface range. Maps from deep caves, sky islands or high plateaus get a
-     * local baseline instead, so every map shows its own relief.
+     * The configured Y is shared by neighbouring maps, so their relief joins
+     * into one landscape. Only maps far outside the normal range (deep caves,
+     * sky islands) get a local baseline.
      */
     private static int chooseStartY(int preferred, int minSurface, int maxSurface) {
         if (minSurface == Integer.MAX_VALUE || maxSurface == Integer.MIN_VALUE) {
             return preferred;
         }
-        int range = maxSurface - minSurface;
-        if (range < 4) {
-            return maxSurface;
+        if (preferred < minSurface - 64) {
+            return minSurface + 8;
         }
-        if (preferred >= minSurface - 16 && preferred <= maxSurface) {
-            return preferred;
+        if (preferred > maxSurface + 24) {
+            return maxSurface - 8;
         }
-        return minSurface + range / 8;
+        return preferred;
     }
 
     public static void clear() {
