@@ -166,7 +166,11 @@ public final class FramedMapMesher {
         int dstZ0 = div == 1 ? 0 : tileRow * FramedMapVolume.SIZE / div;
         int dstZ1 = div == 1 ? FramedMapVolume.SIZE : (tileRow + 1) * FramedMapVolume.SIZE / div;
         FramedMapVolume source = volume;
-        if (div > 1) {
+        // A mega group has no tile sub-rectangle (div = 1) but still needs
+        // its whole image rotated into the group orientation. Only the
+        // per-tile path used to do this, which left the shared group mesh
+        // unrotated while its icons rotated.
+        if (div > 1 || rotation != 0) {
             FramedMapVolume sampled = new FramedMapVolume();
             sampled.clear();
             for (int pz = 0; pz < FramedMapVolume.SIZE; pz++) {
