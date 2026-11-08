@@ -104,7 +104,9 @@ public final class FramedMapRenderer {
         if (!mesh.voxelIcons().isEmpty()) {
             collector.submitCustomGeometry(pose, RenderTypes.entityCutout(WHITE, false), (p, consumer) -> {
                 Matrix4f base = p.pose();
-                float iconScale = ICON_SCALE * div;
+                // A mega group's pose already scales the whole map by div;
+                // the icon geometry must stay in map pixels, not be scaled twice.
+                float iconScale = ICON_SCALE;
                 for (FramedMapMesh.VoxelIcon icon : mesh.voxelIcons()) {
                     IconVoxelShapes.Shape shape = IconVoxelShapes.get(icon.icon(), icon.tint());
                     if (shape == null) {
