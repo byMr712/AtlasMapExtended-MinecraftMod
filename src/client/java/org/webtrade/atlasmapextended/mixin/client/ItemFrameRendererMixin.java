@@ -1,7 +1,6 @@
 package org.webtrade.atlasmapextended.mixin.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
-import com.mojang.math.Axis;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.Direction;
@@ -16,6 +15,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.joml.Matrix4f;
 import org.webtrade.atlasmapextended.client.data.ModConfig;
 import org.webtrade.atlasmapextended.client.framed3d.FramedMapConnections;
 import org.webtrade.atlasmapextended.client.framed3d.FramedMapRenderer;
@@ -113,7 +113,7 @@ public class ItemFrameRendererMixin {
                 int steps = FramedMapConnections.currentTileRotation();
                 if (steps != 0) {
                     pose.translate(64.0f, 64.0f, 0.0f);
-                    pose.mulPose(Axis.ZP.rotationDegrees(-steps * 90.0f));
+                    pose.mulPose(new Matrix4f().rotationZ((float) Math.toRadians(-steps * 90.0f)));
                     pose.translate(-64.0f, -64.0f, 0.0f);
                 }
             }
