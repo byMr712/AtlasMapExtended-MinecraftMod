@@ -148,17 +148,22 @@ public final class FramedMapRenderer {
      * Picks the relief detail from the map's projected size. The 2D base is
      * always drawn by vanilla; only the extra 3D layer is levelled. Many maps
      * at once therefore cost roughly one full-detail map instead of one each.
+     * A map the player is aiming at always keeps full detail, even far away.
      *
-     * @return 0 = no 3D, 1 = full detail, 2/4 = coarse step in source pixels
+     * @return 0 = no 3D, 1 = full detail, 2/4/8 = coarse step in source pixels
      */
     private static int reliefStep(ItemFrameRenderState state, int div, Minecraft mc) {
         if (mc.player == null) {
             return 1;
         }
+        Vec3 center = FramedMapConnections.currentCenter();
+        double tx = center != null ? center.x : state.x;
+        double ty = center != null ? center.y : state.y;
+        double tz = center != null ? center.z : state.z;
         Vec3 eye = mc.player.getEyePosition();
-        double dx = state.x - eye.x;
-        double dy = state.y - eye.y;
-        double dz = state.z - eye.z;
+        double dx = tx - eye.x;
+        double dy = ty - eye.y;
+        double dz = tz - eye.z;
         double distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
         if (distance < 1.0) {
             return 1;
@@ -168,6 +173,9 @@ public final class FramedMapRenderer {
                 / (2.0 * distance * Math.tan(fov * 0.5));
         if (pixels < 8.0) {
             return 0;
+        }
+        if (FramedMapConnections.currentObserved()) {
+            return 1;
         }
         if (pixels >= 192.0) {
             return 1;
