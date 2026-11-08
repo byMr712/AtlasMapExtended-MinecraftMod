@@ -103,11 +103,9 @@ public class ItemFrameRendererMixin {
         MapItemSavedData data = level.getMapData(state.mapId);
         if (data != null) {
             int tileDiv = FramedMapConnections.currentTileDiv();
-            FramedMapConnections.Context context = FramedMapConnections.context();
             if (ModConfig.get().framedMaps3D
                     && tileDiv <= 1
-                    && state.direction == Direction.UP
-                    && context != null && context.worldMask() == 0) {
+                    && state.direction == Direction.UP) {
                 // A lone floor map keeps the orientation chosen when it was
                 // placed, so walking around it does not spin the picture.
                 // The pose is already translated by -64,-64, so the centre

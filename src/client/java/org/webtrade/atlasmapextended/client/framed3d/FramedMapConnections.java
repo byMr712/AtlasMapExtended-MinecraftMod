@@ -200,7 +200,7 @@ public final class FramedMapConnections {
                     ? worldTextureMask(worldMask)
                     : textureMask(frameMask, state.rotation);
             int singleRotation = 0;
-            if (!mega && state.direction == Direction.UP && worldMask == 0) {
+            if (!mega && state.direction == Direction.UP) {
                 singleRotation = singleRotation(level, pos, state, data, camera);
             }
             cached = new Cached(tick, frameMask, textureMask, worldMask,
@@ -457,13 +457,26 @@ public final class FramedMapConnections {
             currentEntities.add(frame.getId());
         }
         if (!groupState.entities.equals(currentEntities)) {
-            // A new physical group (frames were placed or replaced). Start
-            // from the canonical orientation, ignoring the item rotations.
+            // The physical set of frames changed. If some of the same frames
+            // are still here, this is the same group growing or shrinking:
+            // keep its established orientation. Only a genuinely new/rebuilt
+            // group takes a fresh orientation from the player's view.
+            int initialRotation;
+            if (intersects(groupState.entities, currentEntities)) {
+                initialRotation = groupState.rotation;
+            } else {
+                GroupKey inherited = overlappingGroup(group, currentEntities);
+                if (inherited != null) {
+                    initialRotation = GROUPS.get(inherited).rotation;
+                    GROUPS.remove(inherited);
+                } else {
+                    initialRotation = state.direction == Direction.UP && camera != null
+                            ? floorFacingRotation(camera.yRot) : 0;
+                }
+            }
             groupState.entities.clear();
             groupState.entities.addAll(currentEntities);
             groupState.last.clear();
-            int initialRotation = state.direction == Direction.UP && camera != null
-                    ? floorFacingRotation(camera.yRot) : 0;
             groupState.rotation = initialRotation;
             for (Map.Entry<BlockPos, ItemFrame> entry : members.entrySet()) {
                 groupState.last.put(entry.getKey().asLong(), entry.getValue().getRotation() & 3);
@@ -515,6 +528,37 @@ public final class FramedMapConnections {
                     state.mapId.id(), pos, stored.rotation);
         }
         return stored.rotation & 3;
+    }
+
+    private static boolean intersects(Set<Integer> a, Set<Integer> b) {
+        if (a.isEmpty() || b.isEmpty()) {
+            return false;
+        }
+        Set<Integer> small = a.size() <= b.size() ? a : b;
+        Set<Integer> large = small == a ? b : a;
+        for (Integer id : small) {
+            if (large.contains(id)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** An existing group of the same map/plane that shares at least one frame. */
+    private static GroupKey overlappingGroup(GroupKey group, Set<Integer> entities) {
+        for (Map.Entry<GroupKey, GroupState> entry : GROUPS.entrySet()) {
+            GroupKey key = entry.getKey();
+            if (key.equals(group)
+                    || key.mapId() != group.mapId()
+                    || key.direction() != group.direction()
+                    || !key.dimension().equals(group.dimension())) {
+                continue;
+            }
+            if (intersects(entry.getValue().entities, entities)) {
+                return key;
+            }
+        }
+        return null;
     }
 
     private static Direction[] planeSides(Direction direction) {
