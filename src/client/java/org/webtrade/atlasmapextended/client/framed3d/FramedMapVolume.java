@@ -45,4 +45,68 @@ public final class FramedMapVolume {
         System.arraycopy(layerColor, 0, copy.layerColor, 0, layerColor.length);
         return copy;
     }
+
+    /**
+     * Cosmetic fallback for narrow unsampled strips touching the map border:
+     * extend the nearest valid column/row into the strip so the relief does
+     * not end in a flat 2D hole. Only a copy used for meshing is modified;
+     * real sampling still replaces the approximation once the chunks load.
+     */
+    public void fillMissingBorders(int limit) {
+        for (int z = 0; z < SIZE; z++) {
+            int first = -1;
+            int last = -1;
+            for (int x = 0; x < SIZE; x++) {
+                if (valid[z * SIZE + x]) {
+                    if (first < 0) {
+                        first = x;
+                    }
+                    last = x;
+                }
+            }
+            if (first > 0 && first <= limit) {
+                for (int x = 0; x < first; x++) {
+                    copyCell(first, z, x, z);
+                }
+            }
+            if (last >= 0 && last < SIZE - 1 && SIZE - 1 - last <= limit) {
+                for (int x = last + 1; x < SIZE; x++) {
+                    copyCell(last, z, x, z);
+                }
+            }
+        }
+        for (int x = 0; x < SIZE; x++) {
+            int first = -1;
+            int last = -1;
+            for (int z = 0; z < SIZE; z++) {
+                if (valid[z * SIZE + x]) {
+                    if (first < 0) {
+                        first = z;
+                    }
+                    last = z;
+                }
+            }
+            if (first > 0 && first <= limit) {
+                for (int z = 0; z < first; z++) {
+                    copyCell(x, first, x, z);
+                }
+            }
+            if (last >= 0 && last < SIZE - 1 && SIZE - 1 - last <= limit) {
+                for (int z = last + 1; z < SIZE; z++) {
+                    copyCell(x, last, x, z);
+                }
+            }
+        }
+    }
+
+    private void copyCell(int srcX, int srcZ, int dstX, int dstZ) {
+        int from = srcZ * SIZE + srcX;
+        int to = dstZ * SIZE + dstX;
+        valid[to] = valid[from];
+        surfaceY[to] = surfaceY[from];
+        rgb[to] = rgb[from];
+        water[to] = water[from];
+        waterDepth[to] = waterDepth[from];
+        System.arraycopy(layerColor, from * LAYERS, layerColor, to * LAYERS, LAYERS);
+    }
 }
