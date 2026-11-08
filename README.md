@@ -21,6 +21,12 @@
 
 > Мод сделан и портирован с помощью ИИ по идеям автора и зрителей.
 
+<div align="center">
+
+  [<img width="900" alt="Скачать на CurseForge" src="images/curseforge_banner.png">](https://www.curseforge.com/minecraft/mc-mods/atlas-map-extended)
+
+</div>
+
 ## Галерея
 | Карта мира | Миникарта |
 | :---: | :---: |

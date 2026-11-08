@@ -21,6 +21,12 @@ A client-side mod full-screen world map and minimap, markers with icons, descrip
 
 > This mod was created and ported with the help of the AI based on the ideas of the author and viewers.
 
+<div align="center">
+
+  [<img width="900" alt="Download on CurseForge" src="images/curseforge_banner_en.png">](https://www.curseforge.com/minecraft/mc-mods/atlas-map-extended)
+
+</div>
+
 ## Gallery
 | World Map | Minimap |
 | :---: | :---: |
