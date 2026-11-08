@@ -169,13 +169,16 @@ public final class FramedMapRenderer {
         if (pixels < 8.0) {
             return 0;
         }
-        if (pixels >= 128.0) {
+        if (pixels >= 192.0) {
             return 1;
         }
-        if (pixels >= 64.0) {
+        if (pixels >= 96.0) {
             return 2;
         }
-        return 4;
+        if (pixels >= 32.0) {
+            return 4;
+        }
+        return 8;
     }
 
     private static void logOnce(String key, String message, Object... args) {
