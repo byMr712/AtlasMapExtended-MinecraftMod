@@ -123,13 +123,23 @@ public final class FramedMapConnections {
     }
 
     /**
-     * Rotation of a floor map whose top should point in the player's
-     * horizontal facing direction, so it reads like the held map preview.
+     * Rotation of a floor map whose top points away from the player, so the
+     * map reads like the held preview from the player's side.
      * 0 = north, 1 = east, 2 = south, 3 = west.
      */
-    public static int floorFacingRotation(float yRot) {
-        Direction facing = Direction.fromYRot(yRot);
-        return (facing.get2DDataValue() + 2) & 3;
+    public static int floorPlayerRotation(double centerX, double centerZ, Vec3 eye) {
+        if (eye == null) {
+            return 0;
+        }
+        double dx = eye.x - centerX;
+        double dz = eye.z - centerZ;
+        int playerDirection;
+        if (Math.abs(dx) > Math.abs(dz)) {
+            playerDirection = dx > 0 ? 1 : 3; // east / west
+        } else {
+            playerDirection = dz > 0 ? 2 : 0; // south / north
+        }
+        return (playerDirection + 2) & 3;
     }
 
     /** Rotates an unrotated source pixel into the displayed mega-map image. */
@@ -456,6 +466,14 @@ public final class FramedMapConnections {
         for (ItemFrame frame : members.values()) {
             currentEntities.add(frame.getId());
         }
+        double centerX = 0.0;
+        double centerZ = 0.0;
+        for (BlockPos member : members.keySet()) {
+            centerX += member.getX() + 0.5;
+            centerZ += member.getZ() + 0.5;
+        }
+        centerX /= members.size();
+        centerZ /= members.size();
         if (!groupState.entities.equals(currentEntities)) {
             // The physical set of frames changed. If some of the same frames
             // are still here, this is the same group growing or shrinking:
@@ -471,7 +489,7 @@ public final class FramedMapConnections {
                     GROUPS.remove(inherited);
                 } else {
                     initialRotation = state.direction == Direction.UP && camera != null
-                            ? floorFacingRotation(camera.yRot) : 0;
+                            ? floorPlayerRotation(centerX, centerZ, camera.pos) : 0;
                 }
             }
             groupState.entities.clear();
@@ -523,7 +541,8 @@ public final class FramedMapConnections {
                 data, state.mapId, false);
         if (frame != null && stored.entityId != frame.getId()) {
             stored.entityId = frame.getId();
-            stored.rotation = floorFacingRotation(camera != null ? camera.yRot : 0.0f);
+            stored.rotation = floorPlayerRotation(pos.getX() + 0.5, pos.getZ() + 0.5,
+                    camera != null ? camera.pos : null);
             FramedMapDebug.log("single map={} at={} placed rot={}",
                     state.mapId.id(), pos, stored.rotation);
         }
