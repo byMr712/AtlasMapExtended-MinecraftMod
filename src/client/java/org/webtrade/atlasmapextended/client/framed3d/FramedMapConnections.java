@@ -440,6 +440,8 @@ public final class FramedMapConnections {
             for (Map.Entry<BlockPos, ItemFrame> entry : members.entrySet()) {
                 groupState.last.put(entry.getKey().asLong(), entry.getValue().getRotation() & 3);
             }
+            // Let every tile pick up the fresh orientation immediately.
+            CACHE.clear();
             FramedMapDebug.log("group formed map={} tile={}x{} members={} rot=0",
                     state.mapId.id(), cols, cols, members.size());
         } else {
