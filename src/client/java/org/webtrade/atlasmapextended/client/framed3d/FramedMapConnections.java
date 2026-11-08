@@ -66,6 +66,7 @@ public final class FramedMapConnections {
     private static final double MAX_3D_DISTANCE_SQ = 64.0 * 64.0;
     private static long active3DTick = Long.MIN_VALUE;
     private static long active3DGroup = Long.MIN_VALUE;
+    private static long active3DLeader = Long.MIN_VALUE;
     private static double active3DDistance = Double.MAX_VALUE;
     private static Context current;
 
@@ -75,7 +76,7 @@ public final class FramedMapConnections {
     public record Context(int frameMask, int textureMask, int worldMask,
                           int tileDiv, int tileCol, int tileRow, int tileRotation,
                           boolean glow, int light, boolean hideFrame,
-                          boolean suppress3D, boolean active3D) {
+                          boolean suppress3D, boolean active3D, boolean groupLeader) {
     }
 
     private record Key(long pos, int direction, int mapId, int rotation, ResourceKey<Level> dimension) {
@@ -170,6 +171,11 @@ public final class FramedMapConnections {
     /** Only one map/group gets the 3D relief per tick. */
     public static boolean currentActive3D() {
         return current != null && current.active3D();
+    }
+
+    /** The tile that submits the single shared mega-group mesh. */
+    public static boolean currentGroupLeader() {
+        return current == null || current.groupLeader();
     }
 
     /**
@@ -308,6 +314,7 @@ public final class FramedMapConnections {
         if (tick != active3DTick) {
             active3DTick = tick;
             active3DGroup = Long.MIN_VALUE;
+            active3DLeader = Long.MIN_VALUE;
             active3DDistance = Double.MAX_VALUE;
         }
         boolean suppress = cached.suppress3D();
@@ -315,12 +322,16 @@ public final class FramedMapConnections {
                 && (active3DGroup == Long.MIN_VALUE
                 || (groupId != active3DGroup && distanceSq + 4.0 < active3DDistance))) {
             active3DGroup = groupId;
+            active3DLeader = pos.asLong();
             active3DDistance = distanceSq;
         }
         boolean active3D = front && !suppress && groupId == active3DGroup;
+        boolean groupLeader = active3D
+                && (cached.tileDiv() <= 1 || pos.asLong() == active3DLeader);
         current = new Context(frameMask, textureMask, worldMask,
                 cached.tileDiv(), cached.tileCol(), cached.tileRow(), tileRotation,
-                state.isGlowFrame, light, worldMask != 0, cached.suppress3D(), active3D);
+                state.isGlowFrame, light, worldMask != 0, cached.suppress3D(), active3D,
+                groupLeader);
     }
 
     public static void end() {

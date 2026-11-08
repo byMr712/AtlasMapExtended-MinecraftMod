@@ -46,6 +46,7 @@ public final class FramedMapCache {
         final int tileCol;
         final int tileRow;
         final int tileRotation;
+        final int reliefDiv;
         final String id;
         FramedMapVolume volume = new FramedMapVolume();
         long exploredHash;
@@ -62,14 +63,19 @@ public final class FramedMapCache {
         long builtHash;
         long lastBuildTick;
 
-        Entry(FramedMapKey key, int mask, int tileDiv, int tileCol, int tileRow, int tileRotation) {
+        Entry(FramedMapKey key, int mask, int tileDiv, int tileCol, int tileRow, int tileRotation,
+              int reliefDiv, boolean group) {
             this.key = key;
             this.mask = mask & 0x0F;
             this.tileDiv = tileDiv;
             this.tileCol = tileCol;
             this.tileRow = tileRow;
             this.tileRotation = tileRotation & 3;
-            this.id = key.dimension().identifier() + "#" + key.mapId() + "#" + this.mask
+            this.reliefDiv = reliefDiv;
+            this.id = group
+                    ? key.dimension().identifier() + "#" + key.mapId() + "@group:"
+                    + reliefDiv + ":" + this.tileRotation
+                    : key.dimension().identifier() + "#" + key.mapId() + "#" + this.mask
                     + "@" + tileDiv + ":" + tileCol + ":" + tileRow + ":" + this.tileRotation;
         }
     }
@@ -95,7 +101,7 @@ public final class FramedMapCache {
         Entry entry = ENTRIES.get(id);
         if (entry == null) {
             long hash = Arrays.hashCode(data.colors);
-            entry = new Entry(key, mask, div, tileCol, tileRow, rotation);
+            entry = new Entry(key, mask, div, tileCol, tileRow, rotation, div, false);
             entry.overlay = FramedOverlayStorage.getOrCapture(key);
             FramedMapVolume stored = STORED.get(key);
             if (stored == null) {
@@ -123,7 +129,7 @@ public final class FramedMapCache {
             ENTRIES.put(id, entry);
         } else if (!entry.key.sameGeometry(key)) {
             long hash = Arrays.hashCode(data.colors);
-            entry = new Entry(key, mask, div, tileCol, tileRow, rotation);
+            entry = new Entry(key, mask, div, tileCol, tileRow, rotation, div, false);
             entry.overlay = FramedOverlayStorage.getOrCapture(key);
             startSampling(entry, hash);
             ENTRIES.put(id, entry);
@@ -136,6 +142,62 @@ public final class FramedMapCache {
             }
         }
 
+        return entry.mesh;
+    }
+
+    /**
+     * One relief mesh for a whole mega group: the full 128x128 map stretched
+     * over the N×N tiles. Shared by every group of the same map and rotation.
+     */
+    public static FramedMapMesh getGroup(ClientLevel level, MapId mapId, MapItemSavedData data,
+                                         int div, int rotation) {
+        if (!ModConfig.get().framedMaps3D || data.colors == null) {
+            return null;
+        }
+        FramedMapKey key = new FramedMapKey(
+                data.dimension, mapId.id(),
+                data.centerX, data.centerZ, data.scale,
+                level.getMinY(), level.getHeight());
+        int d = Math.max(2, div);
+        int rot = rotation & 3;
+        String id = key.dimension().identifier() + "#" + key.mapId() + "@group:" + d + ":" + rot;
+
+        Entry entry = ENTRIES.get(id);
+        if (entry == null) {
+            long hash = Arrays.hashCode(data.colors);
+            entry = new Entry(key, 0, 1, 0, 0, rot, d, true);
+            entry.overlay = FramedOverlayStorage.getOrCapture(key);
+            FramedMapVolume stored = STORED.get(key);
+            if (stored == null) {
+                stored = FramedMapStorage.load(key);
+                if (stored != null) {
+                    STORED.put(key, stored);
+                }
+            }
+            if (stored != null) {
+                boolean complete = validCount(stored) == FramedMapVolume.COLUMNS;
+                entry.volume = complete ? stored : stored.copy();
+                entry.complete = complete;
+                entry.exploredHash = hash;
+                entry.builtHash = hash;
+                startBuild(entry);
+            } else {
+                startSampling(entry, hash);
+            }
+            ENTRIES.put(id, entry);
+        } else if (!entry.key.sameGeometry(key)) {
+            long hash = Arrays.hashCode(data.colors);
+            entry = new Entry(key, 0, 1, 0, 0, rot, d, true);
+            entry.overlay = FramedOverlayStorage.getOrCapture(key);
+            startSampling(entry, hash);
+            ENTRIES.put(id, entry);
+        } else if (!entry.sampling && !entry.building && entry.mesh != null
+                && level.getGameTime() - entry.lastBuildTick > 100) {
+            long hash = Arrays.hashCode(data.colors);
+            if (entry.builtHash != hash) {
+                startSampling(entry, hash);
+            }
+        }
         return entry.mesh;
     }
 
@@ -283,7 +345,7 @@ public final class FramedMapCache {
             try {
                 FramedMapDebug.detail("meshing start map={} mask={} tile={}x{} col={} row={}",
                         key.mapId(), mask, div, div, col, row);
-                mesh = FramedMapMesher.build(source, key, startY, snapshotOverlay, mask, div, col, row, rotation);
+                mesh = FramedMapMesher.build(source, key, startY, snapshotOverlay, mask, div, col, row, rotation, entry.reliefDiv);
                 FramedMapDebug.detail("meshing done map={} mask={} tile={}x{} col={} row={} quads={}",
                         key.mapId(), mask, div, div, col, row, mesh.quadCount());
             } catch (Throwable t) {

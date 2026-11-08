@@ -146,7 +146,8 @@ public class ItemFrameRendererMixin {
             CallbackInfo ci
     ) {
         if (FramedMapConnections.currentSuppress3D()
-                || !FramedMapConnections.currentActive3D()) {
+                || !FramedMapConnections.currentActive3D()
+                || !FramedMapConnections.currentGroupLeader()) {
             return;
         }
         FramedMapRenderer.render(
