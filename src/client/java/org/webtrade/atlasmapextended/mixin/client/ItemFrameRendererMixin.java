@@ -14,6 +14,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.webtrade.atlasmapextended.client.data.ModConfig;
 import org.webtrade.atlasmapextended.client.framed3d.FramedMapConnections;
 import org.webtrade.atlasmapextended.client.framed3d.FramedMapRenderer;
 import org.webtrade.atlasmapextended.client.map.HeldMapTextures;
@@ -67,8 +68,12 @@ public class ItemFrameRendererMixin {
     ) {
         FramedMapConnections.Context context = FramedMapConnections.context();
         if (context != null && context.hideFrame()) {
-            FramedMapConnections.renderOuterFrame(
-                    pose, collector, context.worldMask(), context.glow(), context.light());
+            // In 3D the rim would float above the relief; the merged terrain
+            // itself is the picture. In 2D keep the thin outer rim.
+            if (!ModConfig.get().framedMaps3D) {
+                FramedMapConnections.renderOuterFrame(
+                        pose, collector, context.worldMask(), context.glow(), context.light());
+            }
             return;
         }
         model.submitWithZOffset(pose, collector, light, overlay, outlineColor);

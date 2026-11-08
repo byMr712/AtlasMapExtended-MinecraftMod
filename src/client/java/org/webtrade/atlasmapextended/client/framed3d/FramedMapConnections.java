@@ -52,6 +52,7 @@ public final class FramedMapConnections {
     private static final int MAX_CACHE = 8192;
     private static final Map<Key, Cached> CACHE = new HashMap<>();
     private static final Set<Key> LOGGED_KEYS = new HashSet<>();
+    private static final Set<Integer> RIM_LOGGED = new HashSet<>();
     private static Context current;
 
     private FramedMapConnections() {
@@ -125,6 +126,7 @@ public final class FramedMapConnections {
     public static void clear() {
         CACHE.clear();
         LOGGED_KEYS.clear();
+        RIM_LOGGED.clear();
         FramedMapRenderer.clearDiagnostics();
         current = null;
     }
@@ -383,6 +385,12 @@ public final class FramedMapConnections {
      */
     public static void renderOuterFrame(PoseStack pose, SubmitNodeCollector collector,
                                         int worldMask, boolean glow, int light) {
+        if (RIM_LOGGED.add(worldMask)) {
+            Matrix4fc m = pose.last().pose();
+            FramedMapDebug.log("rim worldMask={} +x={} -x={} +y={} -y={}",
+                    worldMask, directionOf(m, 1, 0, 0), directionOf(m, -1, 0, 0),
+                    directionOf(m, 0, 1, 0), directionOf(m, 0, -1, 0));
+        }
         Paper.ensureFrom(WHITE, WHITE);
         RenderType type = RenderTypes.entityCutout(WHITE, false);
         int color = glow ? 0xFFF0DCA8 : 0xFFC8AE78;
@@ -403,6 +411,21 @@ public final class FramedMapConnections {
                 quad(consumer, matrix, -0.5f, -0.5f + w, -0.5f + w, 0.5f - w, z, color, light);
             }
         });
+    }
+
+    private static Direction directionOf(Matrix4fc matrix, float x, float y, float z) {
+        Vector3f v = new Vector3f(x, y, z);
+        matrix.transformDirection(v);
+        float ax = Math.abs(v.x);
+        float ay = Math.abs(v.y);
+        float az = Math.abs(v.z);
+        if (ax >= ay && ax >= az) {
+            return v.x >= 0 ? Direction.EAST : Direction.WEST;
+        }
+        if (ay >= az) {
+            return v.y >= 0 ? Direction.UP : Direction.DOWN;
+        }
+        return v.z >= 0 ? Direction.SOUTH : Direction.NORTH;
     }
 
     /** True when the frame-local direction maps to a world side that has a neighbour. */
