@@ -1168,7 +1168,7 @@ public final class FramedMapConnections {
                     directionOf(m, 0, 1, 0), directionOf(m, 0, -1, 0));
         }
         Paper.ensureFrom(WHITE, WHITE);
-        RenderType type = RenderTypes.text(WHITE);
+        RenderType type = RenderTypes.entityCutout(WHITE, false);
         int color = glow ? 0xFFF0DCA8 : 0xFFC8AE78;
         collector.submitCustomGeometry(pose, type, (p, consumer) -> {
             Matrix4fc matrix = p.pose();
