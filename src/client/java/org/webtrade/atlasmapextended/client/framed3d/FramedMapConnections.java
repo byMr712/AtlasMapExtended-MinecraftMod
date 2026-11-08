@@ -62,6 +62,11 @@ public final class FramedMapConnections {
     private static final Map<Long, GroupKey> POSITION_GROUP = new HashMap<>();
     /** Positions of large unfinished clusters, valid for a few ticks. */
     private static final Map<Long, Long> SUPPRESS_SCAN = new HashMap<>();
+    /** One 3D group at a time keeps the cost equal to a single map. */
+    private static final double MAX_3D_DISTANCE_SQ = 64.0 * 64.0;
+    private static long active3DTick = Long.MIN_VALUE;
+    private static long active3DGroup = Long.MIN_VALUE;
+    private static double active3DDistance = Double.MAX_VALUE;
     private static Context current;
 
     private FramedMapConnections() {
@@ -69,7 +74,8 @@ public final class FramedMapConnections {
 
     public record Context(int frameMask, int textureMask, int worldMask,
                           int tileDiv, int tileCol, int tileRow, int tileRotation,
-                          boolean glow, int light, boolean hideFrame, boolean suppress3D) {
+                          boolean glow, int light, boolean hideFrame,
+                          boolean suppress3D, boolean active3D) {
     }
 
     private record Key(long pos, int direction, int mapId, int rotation, ResourceKey<Level> dimension) {
@@ -159,6 +165,11 @@ public final class FramedMapConnections {
     /** Large unfinished clusters are shown flat until the square is complete. */
     public static boolean currentSuppress3D() {
         return current != null && current.suppress3D();
+    }
+
+    /** Only one map/group gets the 3D relief per tick. */
+    public static boolean currentActive3D() {
+        return current != null && current.active3D();
     }
 
     /**
@@ -290,9 +301,26 @@ public final class FramedMapConnections {
         int tileRotation = cached.group() != null
                 ? groupRotation(cached.group()) : cached.singleRotation();
         int light = state.isGlowFrame ? 15728880 : state.lightCoords;
+        long groupId = cached.group() != null ? cached.group().hashCode() : pos.asLong();
+        double distanceSq = camera != null && camera.pos != null
+                ? camera.pos.distanceToSqr(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5)
+                : Double.MAX_VALUE;
+        if (tick != active3DTick) {
+            active3DTick = tick;
+            active3DGroup = Long.MIN_VALUE;
+            active3DDistance = Double.MAX_VALUE;
+        }
+        boolean suppress = cached.suppress3D();
+        if (front && !suppress && distanceSq <= MAX_3D_DISTANCE_SQ
+                && (active3DGroup == Long.MIN_VALUE
+                || (groupId != active3DGroup && distanceSq + 4.0 < active3DDistance))) {
+            active3DGroup = groupId;
+            active3DDistance = distanceSq;
+        }
+        boolean active3D = front && !suppress && groupId == active3DGroup;
         current = new Context(frameMask, textureMask, worldMask,
                 cached.tileDiv(), cached.tileCol(), cached.tileRow(), tileRotation,
-                state.isGlowFrame, light, worldMask != 0, cached.suppress3D());
+                state.isGlowFrame, light, worldMask != 0, cached.suppress3D(), active3D);
     }
 
     public static void end() {
