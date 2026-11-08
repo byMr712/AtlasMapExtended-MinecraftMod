@@ -3,6 +3,7 @@ package org.webtrade.atlasmapextended.mixin.client;
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.block.BlockModelRenderState;
@@ -20,6 +21,7 @@ import org.webtrade.atlasmapextended.client.data.ModConfig;
 import org.webtrade.atlasmapextended.client.framed3d.FramedMapConnections;
 import org.webtrade.atlasmapextended.client.framed3d.FramedMapRenderer;
 import org.webtrade.atlasmapextended.client.map.HeldMapTextures;
+import org.webtrade.atlasmapextended.client.map.MapLocationResolver;
 
 /** Adds the AtlasMap 3D relief to filled maps in item frames. */
 @Mixin(ItemFrameRenderer.class)
@@ -35,6 +37,13 @@ public class ItemFrameRendererMixin {
             CameraRenderState camera,
             CallbackInfo ci
     ) {
+        if (state.mapId != null && Minecraft.getInstance().level != null) {
+            MapItemSavedData data = Minecraft.getInstance().level.getMapData(state.mapId);
+            if (data != null) {
+                BlockPos framePos = BlockPos.containing(state.x, state.y, state.z);
+                MapLocationResolver.resolve(Minecraft.getInstance().level, state.mapId, data, framePos);
+            }
+        }
         FramedMapConnections.begin(Minecraft.getInstance().level, state, camera);
     }
 

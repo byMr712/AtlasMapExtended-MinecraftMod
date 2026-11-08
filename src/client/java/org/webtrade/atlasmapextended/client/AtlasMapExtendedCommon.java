@@ -28,6 +28,7 @@ import org.webtrade.atlasmapextended.client.gui.T;
 import org.webtrade.atlasmapextended.client.gui.Theme;
 import org.webtrade.atlasmapextended.client.gui.TitleButton;
 import org.webtrade.atlasmapextended.client.gui.WorldsScreen;
+import org.webtrade.atlasmapextended.client.map.MapLocationResolver;
 import org.webtrade.atlasmapextended.client.map.MapManager;
 import org.webtrade.atlasmapextended.client.map.MapSession;
 import org.webtrade.atlasmapextended.mixin.client.ScreenAccessor;
@@ -149,6 +150,7 @@ public final class AtlasMapExtendedCommon {
         }
         MapItemSavedData data = level.getMapData(mapId);
         if (data != null) {
+            MapLocationResolver.resolve(level, mapId, data, null);
             FramedMapCache.prepareHeld(level, mapId, data);
         }
     }

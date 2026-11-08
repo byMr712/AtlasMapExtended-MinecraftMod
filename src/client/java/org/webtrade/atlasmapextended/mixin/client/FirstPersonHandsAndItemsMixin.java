@@ -13,6 +13,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import org.webtrade.atlasmapextended.client.map.HeldMapTextures;
+import org.webtrade.atlasmapextended.client.map.MapLocationResolver;
 
 /** Swaps the held filled-map texture for the AtlasMap papyrus version. */
 @Mixin(FirstPersonHandsAndItems.class)
@@ -36,6 +37,7 @@ public class FirstPersonHandsAndItemsMixin {
         if (data == null) {
             return;
         }
+        MapLocationResolver.resolve(player.level(), mapId, data, null);
         var texture = HeldMapTextures.get(mapId, data);
         if (texture != null) {
             state.texture = texture;
