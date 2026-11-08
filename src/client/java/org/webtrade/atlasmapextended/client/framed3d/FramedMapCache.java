@@ -22,6 +22,8 @@ import java.util.concurrent.Executors;
 public final class FramedMapCache {
     /** Extra blocks below the configured level that still get 3D relief. */
     private static final int BELOW_BASELINE = 20;
+    /** Narrow unsampled border strips up to this many pixels get extrapolated for the mesh. */
+    private static final int BORDER_FILL = 16;
     private static final int COLUMNS_PER_TICK = 512;
     /** Columns re-checked per tick to fill in areas that were not loaded during the first pass. */
     private static final int RETRY_COLUMNS_PER_TICK = 512;
@@ -316,12 +318,16 @@ public final class FramedMapCache {
         // the worker can read the shared arrays directly. Incomplete volumes
         // are rare; copy them before leaving the client thread.
         FramedMapVolume source = entry.complete ? entry.volume : entry.volume.copy();
+        boolean fillBorders = !entry.complete;
         int mask = entry.mask;
         int div = entry.tileDiv;
         int col = entry.tileCol;
         int row = entry.tileRow;
         int rotation = entry.tileRotation;
         MESH_POOL.execute(() -> {
+            if (fillBorders) {
+                source.fillMissingBorders(BORDER_FILL);
+            }
             int minSurface = Integer.MAX_VALUE;
             int maxSurface = Integer.MIN_VALUE;
             int valid = 0;
