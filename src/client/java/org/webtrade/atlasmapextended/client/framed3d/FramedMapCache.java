@@ -267,6 +267,9 @@ public final class FramedMapCache {
         }
         for (Entry entry : ENTRIES.values()) {
             if (!entry.key.dimension().equals(level.dimension())) {
+                // The integrated server can still load the map's dimension,
+                // even when the client is currently in another one.
+                startServerSampleIfNeeded(level, entry);
                 continue;
             }
             if (entry.sampling) {
