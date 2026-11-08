@@ -35,7 +35,7 @@ public final class FramedMapRenderer {
     }
 
     public static void render(ItemFrameRenderState state, PoseStack pose, SubmitNodeCollector collector,
-                              int textureMask, int tileCenterX, int tileCenterZ) {
+                              int textureMask, int tileDiv, int tileCol, int tileRow) {
         if (state.mapId == null) {
             return;
         }
@@ -57,22 +57,21 @@ public final class FramedMapRenderer {
             return;
         }
 
-        int tileX = tileCenterX == Integer.MIN_VALUE ? data.centerX : tileCenterX;
-        int tileZ = tileCenterZ == Integer.MIN_VALUE ? data.centerZ : tileCenterZ;
+        int div = Math.max(1, tileDiv);
         FramedMapMesh mesh = FramedMapCache.getOrRequest(
-                level, state.mapId, data, textureMask, tileX, tileZ);
+                level, state.mapId, data, textureMask, div, tileCol, tileRow);
         if (mesh == null) {
-            logOnce("nomesh:" + state.mapId.id() + ":" + textureMask + ":" + tileX + ":" + tileZ,
-                    "render map={} mask={} center={},{} tile={},{} scale={} -> mesh not ready",
+            logOnce("nomesh:" + state.mapId.id() + ":" + textureMask + ":" + div + ":" + tileCol + ":" + tileRow,
+                    "render map={} mask={} center={},{} tile={}x{} col={} row={} scale={} -> mesh not ready",
                     state.mapId.id(), textureMask, data.centerX, data.centerZ,
-                    tileX, tileZ, data.scale);
+                    div, div, tileCol, tileRow, data.scale);
             return;
         }
-        logOnce("mesh:" + state.mapId.id() + ":" + textureMask + ":" + tileX + ":" + tileZ
+        logOnce("mesh:" + state.mapId.id() + ":" + textureMask + ":" + div + ":" + tileCol + ":" + tileRow
                         + ":" + System.identityHashCode(mesh),
-                "render map={} mask={} center={},{} tile={},{} scale={} glow={} quads={} lines={} icons={}",
+                "render map={} mask={} center={},{} tile={}x{} col={} row={} scale={} glow={} quads={} lines={} icons={}",
                 state.mapId.id(), textureMask, data.centerX, data.centerZ,
-                tileX, tileZ, data.scale,
+                div, div, tileCol, tileRow, data.scale,
                 state.isGlowFrame, mesh.quadCount(), mesh.lineCount(), mesh.voxelIcons().size());
         long gameTime = level.getGameTime();
         float meshBrightness = state.isGlowFrame ? GLOW_MESH_BRIGHTNESS : 1.0f;
@@ -93,6 +92,7 @@ public final class FramedMapRenderer {
         if (!mesh.voxelIcons().isEmpty()) {
             collector.submitCustomGeometry(pose, RenderTypes.entityCutout(WHITE, false), (p, consumer) -> {
                 Matrix4f base = p.pose();
+                float iconScale = ICON_SCALE * div;
                 for (FramedMapMesh.VoxelIcon icon : mesh.voxelIcons()) {
                     IconVoxelShapes.Shape shape = IconVoxelShapes.get(icon.icon(), icon.tint());
                     if (shape == null) {
@@ -112,7 +112,7 @@ public final class FramedMapRenderer {
                         matrix.rotateY(angle);
                     }
                     float yOffset = arrowIcon ? -8.0f : -16.0f;
-                    matrix.scale(ICON_SCALE, ICON_SCALE, ICON_SCALE)
+                    matrix.scale(iconScale, iconScale, iconScale)
                             .translate(-8.0f, yOffset, -shape.depth / 2.0f);
                     shape.emit(matrix, consumer, iconBrightness, light);
                 }
