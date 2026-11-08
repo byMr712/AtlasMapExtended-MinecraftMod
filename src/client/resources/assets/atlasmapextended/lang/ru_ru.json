@@ -34,6 +34,8 @@
   "atlasmapextended.list.nothing_found": "Ничего не найдено.",
   "atlasmapextended.marker.unnamed": "Без названия",
   "atlasmapextended.biome.title": "Биом",
+  "atlasmapextended.biome.too_far": "Вы слишком далеко, для определения биома",
+  "atlasmapextended.biome.unknown": "Биом неизвестен",
   "atlasmapextended.marker.show": "Показать",
   "atlasmapextended.marker.hide": "Скрыть",
   "atlasmapextended.marker.no_desc": "— описания нет —",
