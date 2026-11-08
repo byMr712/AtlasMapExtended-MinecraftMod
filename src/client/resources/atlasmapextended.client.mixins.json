@@ -11,6 +11,7 @@
     "HudMixin",
     "ItemFrameRendererMixin",
     "LanguageManagerMixin",
+    "MapItemSavedDataAccessor",
     "MinecraftMixin",
     "OptionsMixin",
     "ScreenAccessor",

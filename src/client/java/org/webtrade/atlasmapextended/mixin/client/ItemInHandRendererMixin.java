@@ -17,6 +17,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.webtrade.atlasmapextended.client.map.HeldMapTextures;
+import org.webtrade.atlasmapextended.client.map.MapLocationResolver;
 
 /** Swaps the held filled-map texture for the AtlasMap papyrus version. */
 @Mixin(ItemInHandRenderer.class)
@@ -42,6 +43,7 @@ public class ItemInHandRendererMixin {
         if (data == null) {
             return;
         }
+        MapLocationResolver.resolve(Minecraft.getInstance().level, mapId, data, null);
         Identifier texture = HeldMapTextures.get(mapId, data);
         if (texture != null) {
             mapRenderState.texture = texture;
