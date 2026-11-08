@@ -103,9 +103,13 @@ public class ItemFrameRendererMixin {
         if (data != null) {
             if (ModConfig.get().framedMaps3D) {
                 // The framed relief was drawn upside down relative to the
-                // vanilla map. Turn the whole framed picture (base texture,
-                // decorations and 3D mesh) by 180 degrees from the start.
+                // vanilla map. Rotate the whole framed picture (base texture,
+                // decorations and 3D mesh) by 180 degrees around the map
+                // centre. The pose is already translated by -64,-64, so the
+                // centre compensation keeps the map inside its frame.
+                pose.translate(64.0f, 64.0f, 0.0f);
                 pose.mulPose(Axis.ZP.rotationDegrees(180.0f));
+                pose.translate(-64.0f, -64.0f, 0.0f);
             }
             int tileDiv = FramedMapConnections.currentTileDiv();
             if (tileDiv > 1) {
