@@ -18,6 +18,7 @@ import java.util.Map;
  */
 public final class FramedMapMesher {
     private static final int MAX_QUADS = 200_000;
+    private static final float SPLIT_EPS = 1e-4f;
     private static final float MAX_DEPTH = 96.0f;
     /** Keeps the relief clearly in front of the flat map and avoids z-fighting. */
     private static final float BASE_OFFSET = 0.5f;
@@ -160,6 +161,9 @@ public final class FramedMapMesher {
         int div = Math.max(1, tileDiv);
         int relief = Math.max(1, reliefDiv);
         int step = Math.max(1, Math.min(FramedMapVolume.SIZE, lodStep));
+        // A completed mega group is one 128x128 image spread over N frames.
+        // Quads get a tile index so their glow can follow the physical frame.
+        int groupTiles = div == 1 && relief > 1 ? relief : 0;
         int rotation = relief > 1 ? tileRotation & 3 : 0;
         int dstX0 = div == 1 ? 0 : tileCol * FramedMapVolume.SIZE / div;
         int dstX1 = div == 1 ? FramedMapVolume.SIZE : (tileCol + 1) * FramedMapVolume.SIZE / div;
@@ -304,7 +308,7 @@ public final class FramedMapMesher {
                             x1, z0, d,
                             color));
                     if (quads.size() >= MAX_QUADS) {
-                        return finish(quads, lines, icons);
+                        return finish(quads, lines, icons, groupTiles);
                     }
                 }
             }
@@ -353,13 +357,13 @@ public final class FramedMapMesher {
                                 pz, px, north, d, surfaceColor, relief);
                     }
                     if (quads.size() >= MAX_QUADS) {
-                        return finish(quads, lines, icons);
+                        return finish(quads, lines, icons, groupTiles);
                     }
                 }
             }
             walls.emit(quads);
             if (quads.size() >= MAX_QUADS) {
-                return finish(quads, lines, icons);
+                return finish(quads, lines, icons, groupTiles);
             }
         } else {
             int cells = FramedMapVolume.SIZE / step;
@@ -414,7 +418,7 @@ public final class FramedMapMesher {
                             x1, z0, heights[cz * stride + cx + 1],
                             colors[rep]));
                     if (quads.size() >= MAX_QUADS) {
-                        return finish(quads, lines, icons);
+                        return finish(quads, lines, icons, groupTiles);
                     }
                 }
             }
@@ -471,7 +475,7 @@ public final class FramedMapMesher {
                                 shade(color, EDGE_SHADE)));
                     }
                     if (quads.size() >= MAX_QUADS) {
-                        return finish(quads, lines, icons);
+                        return finish(quads, lines, icons, groupTiles);
                     }
                 }
             }
@@ -481,7 +485,7 @@ public final class FramedMapMesher {
             addOverlay(volume, startY, depth, lines, icons, overlay, scaleFactor,
                     relief, dstX0, dstX1, dstZ0, dstZ1, rotation, step <= 2);
         }
-        return finish(quads, lines, icons);
+        return finish(quads, lines, icons, groupTiles);
     }
 
     /**
@@ -694,11 +698,28 @@ public final class FramedMapMesher {
     }
 
     private static FramedMapMesh finish(List<Quad> quads, List<Line> lines,
-                                        List<FramedMapMesh.VoxelIcon> icons) {
-        float[] positions = new float[quads.size() * 12];
-        int[] colors = new int[quads.size()];
-        for (int i = 0; i < quads.size(); i++) {
-            Quad quad = quads.get(i);
+                                        List<FramedMapMesh.VoxelIcon> icons, int tilesPerSide) {
+        List<Quad> finalQuads = quads;
+        int[] quadTiles = null;
+        if (tilesPerSide > 1) {
+            float tileSize = (float) FramedMapVolume.SIZE / tilesPerSide;
+            finalQuads = new ArrayList<>(quads.size());
+            List<Integer> tiles = new ArrayList<>(quads.size());
+            for (Quad quad : quads) {
+                splitByTiles(quad, tilesPerSide, tileSize, finalQuads, tiles);
+                if (finalQuads.size() >= MAX_QUADS) {
+                    break;
+                }
+            }
+            quadTiles = new int[finalQuads.size()];
+            for (int i = 0; i < quadTiles.length; i++) {
+                quadTiles[i] = tiles.get(i);
+            }
+        }
+        float[] positions = new float[finalQuads.size() * 12];
+        int[] colors = new int[finalQuads.size()];
+        for (int i = 0; i < finalQuads.size(); i++) {
+            Quad quad = finalQuads.get(i);
             System.arraycopy(quad.p, 0, positions, i * 12, 12);
             colors[i] = quad.color;
         }
@@ -709,8 +730,212 @@ public final class FramedMapMesher {
             System.arraycopy(line.p, 0, linePositions, i * 6, 6);
             lineColors[i] = line.color;
         }
-        return new FramedMapMesh(positions, colors, quads.size(), linePositions, lineColors,
-                lines.size(), icons);
+        return new FramedMapMesh(positions, colors, finalQuads.size(), linePositions, lineColors,
+                lines.size(), icons, quadTiles);
+    }
+
+    /**
+     * Splits a quad at the mega-group tile boundaries and records which tile
+     * it belongs to. Without this a large merged ocean rectangle could span
+     * several frames and glow as one whole piece.
+     */
+    private static void splitByTiles(Quad quad, int tiles, float tileSize,
+                                     List<Quad> out, List<Integer> tileOut) {
+        float minX = Float.MAX_VALUE;
+        float maxX = -Float.MAX_VALUE;
+        float minY = Float.MAX_VALUE;
+        float maxY = -Float.MAX_VALUE;
+        for (int v = 0; v < 4; v++) {
+            float x = quad.p[v * 3];
+            float y = quad.p[v * 3 + 1];
+            minX = Math.min(minX, x);
+            maxX = Math.max(maxX, x);
+            minY = Math.min(minY, y);
+            maxY = Math.max(maxY, y);
+        }
+        float xSpan = maxX - minX;
+        float ySpan = maxY - minY;
+        if (xSpan <= SPLIT_EPS && ySpan <= SPLIT_EPS) {
+            out.add(quad);
+            tileOut.add(tileAt((minX + maxX) * 0.5f, (minY + maxY) * 0.5f, tiles, tileSize));
+        } else if (xSpan > SPLIT_EPS && ySpan > SPLIT_EPS) {
+            splitTop(quad, minX, maxX, minY, maxY, tiles, tileSize, out, tileOut);
+        } else if (xSpan > SPLIT_EPS) {
+            splitWallX(quad, minX, maxX, tiles, tileSize, out, tileOut);
+        } else {
+            splitWallY(quad, minY, maxY, tiles, tileSize, out, tileOut);
+        }
+    }
+
+    /** Horizontal top face; depth is bilinear between its four corners. */
+    private static void splitTop(Quad quad, float minX, float maxX, float minY, float maxY,
+                                 int tiles, float tileSize, List<Quad> out, List<Integer> tileOut) {
+        float xSpan = maxX - minX;
+        float ySpan = maxY - minY;
+        if (!crosses(minX, maxX, tileSize) && !crosses(minY, maxY, tileSize)) {
+            out.add(quad);
+            tileOut.add(tileAt((minX + maxX) * 0.5f, (minY + maxY) * 0.5f, tiles, tileSize));
+            return;
+        }
+        float z00 = cornerDepth(quad, minX, minY);
+        float z10 = cornerDepth(quad, maxX, minY);
+        float z01 = cornerDepth(quad, minX, maxY);
+        float z11 = cornerDepth(quad, maxX, maxY);
+        float[] xs = breaks(minX, maxX, tileSize);
+        float[] ys = breaks(minY, maxY, tileSize);
+        for (int xi = 0; xi + 1 < xs.length; xi++) {
+            float xa = xs[xi];
+            float xb = xs[xi + 1];
+            for (int yi = 0; yi + 1 < ys.length; yi++) {
+                float ya = ys[yi];
+                float yb = ys[yi + 1];
+                float zA = bilinear(z00, z10, z01, z11, minX, xa, xSpan, minY, ya, ySpan);
+                float zB = bilinear(z00, z10, z01, z11, minX, xa, xSpan, minY, yb, ySpan);
+                float zC = bilinear(z00, z10, z01, z11, minX, xb, xSpan, minY, yb, ySpan);
+                float zD = bilinear(z00, z10, z01, z11, minX, xb, xSpan, minY, ya, ySpan);
+                out.add(new Quad(xa, ya, zA, xa, yb, zB, xb, yb, zC, xb, ya, zD, quad.color));
+                tileOut.add(tileAt((xa + xb) * 0.5f, (ya + yb) * 0.5f, tiles, tileSize));
+            }
+        }
+    }
+
+    /** Vertical wall whose span runs along X (south/north). */
+    private static void splitWallX(Quad quad, float minX, float maxX,
+                                   int tiles, float tileSize, List<Quad> out, List<Integer> tileOut) {
+        float x0 = quad.p[0];
+        float x1 = quad.p[3];
+        float y = quad.p[1];
+        float bottom0 = quad.p[2];
+        float bottom1 = quad.p[5];
+        float top0 = quad.p[11];
+        float top1 = quad.p[8];
+        if (!crosses(minX, maxX, tileSize)) {
+            out.add(quad);
+            tileOut.add(tileAt((minX + maxX) * 0.5f, y, tiles, tileSize));
+            return;
+        }
+        float span = x1 - x0;
+        float[] xs = breaks(minX, maxX, tileSize);
+        boolean forward = x1 > x0;
+        for (int i = 0; i + 1 < xs.length; i++) {
+            float xa = xs[i];
+            float xb = xs[i + 1];
+            float ta = (xa - x0) / span;
+            float tb = (xb - x0) / span;
+            float bottomA = lerp(bottom0, bottom1, ta);
+            float bottomB = lerp(bottom0, bottom1, tb);
+            float topA = lerp(top0, top1, ta);
+            float topB = lerp(top0, top1, tb);
+            if (forward) {
+                out.add(new Quad(xa, y, bottomA, xb, y, bottomB,
+                        xb, y, topB, xa, y, topA, quad.color));
+            } else {
+                out.add(new Quad(xb, y, bottomB, xa, y, bottomA,
+                        xa, y, topA, xb, y, topB, quad.color));
+            }
+            tileOut.add(tileAt((xa + xb) * 0.5f, y, tiles, tileSize));
+        }
+    }
+
+    /** Vertical wall whose span runs along Y (east/west). */
+    private static void splitWallY(Quad quad, float minY, float maxY,
+                                   int tiles, float tileSize, List<Quad> out, List<Integer> tileOut) {
+        float y0 = quad.p[1];
+        float y1 = quad.p[4];
+        float x = quad.p[0];
+        float bottom0 = quad.p[2];
+        float bottom1 = quad.p[5];
+        float top0 = quad.p[11];
+        float top1 = quad.p[8];
+        if (!crosses(minY, maxY, tileSize)) {
+            out.add(quad);
+            tileOut.add(tileAt(x, (minY + maxY) * 0.5f, tiles, tileSize));
+            return;
+        }
+        float span = y1 - y0;
+        float[] ys = breaks(minY, maxY, tileSize);
+        boolean forward = y1 > y0;
+        for (int i = 0; i + 1 < ys.length; i++) {
+            float ya = ys[i];
+            float yb = ys[i + 1];
+            float ta = (ya - y0) / span;
+            float tb = (yb - y0) / span;
+            float bottomA = lerp(bottom0, bottom1, ta);
+            float bottomB = lerp(bottom0, bottom1, tb);
+            float topA = lerp(top0, top1, ta);
+            float topB = lerp(top0, top1, tb);
+            if (forward) {
+                out.add(new Quad(x, ya, bottomA, x, yb, bottomB,
+                        x, yb, topB, x, ya, topA, quad.color));
+            } else {
+                out.add(new Quad(x, yb, bottomB, x, ya, bottomA,
+                        x, ya, topA, x, yb, topB, quad.color));
+            }
+            tileOut.add(tileAt(x, (ya + yb) * 0.5f, tiles, tileSize));
+        }
+    }
+
+    private static boolean crosses(float min, float max, float tileSize) {
+        int first = (int) Math.ceil((min + SPLIT_EPS) / tileSize);
+        return first * tileSize < max - SPLIT_EPS;
+    }
+
+    private static float[] breaks(float min, float max, float tileSize) {
+        List<Float> list = new ArrayList<>();
+        list.add(min);
+        int first = (int) Math.ceil((min + SPLIT_EPS) / tileSize);
+        for (int i = first; ; i++) {
+            float boundary = i * tileSize;
+            if (boundary >= max - SPLIT_EPS) {
+                break;
+            }
+            if (boundary > min + SPLIT_EPS) {
+                list.add(boundary);
+            }
+            if (list.size() > 64) {
+                break;
+            }
+        }
+        if (list.get(list.size() - 1) < max) {
+            list.add(max);
+        }
+        float[] result = new float[list.size()];
+        for (int i = 0; i < result.length; i++) {
+            result[i] = list.get(i);
+        }
+        return result;
+    }
+
+    private static float cornerDepth(Quad quad, float x, float y) {
+        for (int v = 0; v < 4; v++) {
+            if (Math.abs(quad.p[v * 3] - x) <= SPLIT_EPS
+                    && Math.abs(quad.p[v * 3 + 1] - y) <= SPLIT_EPS) {
+                return quad.p[v * 3 + 2];
+            }
+        }
+        return quad.p[2];
+    }
+
+    private static float bilinear(float z00, float z10, float z01, float z11,
+                                  float minX, float x, float xSpan,
+                                  float minY, float y, float ySpan) {
+        float u = xSpan <= SPLIT_EPS ? 0.0f : (x - minX) / xSpan;
+        float v = ySpan <= SPLIT_EPS ? 0.0f : (y - minY) / ySpan;
+        float north = z00 + (z10 - z00) * u;
+        float south = z01 + (z11 - z01) * u;
+        return north + (south - north) * v;
+    }
+
+    private static float lerp(float a, float b, float t) {
+        return a + (b - a) * t;
+    }
+
+    private static int tileAt(float x, float y, int tiles, float tileSize) {
+        int col = (int) Math.floor(x / tileSize);
+        int row = (int) Math.floor(y / tileSize);
+        col = Math.max(0, Math.min(tiles - 1, col));
+        row = Math.max(0, Math.min(tiles - 1, row));
+        return row * tiles + col;
     }
 
     /** Blends the region fill into the terrain colour, like the 2D map's 0x55 fill. */

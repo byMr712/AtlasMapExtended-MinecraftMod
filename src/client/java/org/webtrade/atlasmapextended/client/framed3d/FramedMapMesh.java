@@ -15,10 +15,12 @@ public final class FramedMapMesh {
     private final int[] lineColors;
     private final int lineCount;
     private final List<VoxelIcon> voxelIcons;
+    /** Tile index per quad for a shared mega-group mesh; null for one map. */
+    private final int[] quadTiles;
 
     FramedMapMesh(float[] positions, int[] colors, int count,
                   float[] linePositions, int[] lineColors, int lineCount,
-                  List<VoxelIcon> voxelIcons) {
+                  List<VoxelIcon> voxelIcons, int[] quadTiles) {
         this.positions = positions;
         this.colors = colors;
         this.count = count;
@@ -26,6 +28,7 @@ public final class FramedMapMesh {
         this.lineColors = lineColors;
         this.lineCount = lineCount;
         this.voxelIcons = voxelIcons;
+        this.quadTiles = quadTiles;
     }
 
     public int quadCount() {
@@ -41,19 +44,44 @@ public final class FramedMapMesh {
     }
 
     public void emit(Matrix4fc matrix, VertexConsumer consumer, float brightness, int light) {
+        emit(matrix, consumer, brightness, light, null, light, brightness);
+    }
+
+    /**
+     * Emits a shared mega-group mesh with per-tile glow. Quads that belong to
+     * a glowing frame use the glow light and brightness; the rest keep the
+     * normal ones. This restores mixed glow/normal parts without splitting
+     * the group back into per-tile meshes.
+     */
+    public void emitTiled(Matrix4fc matrix, VertexConsumer consumer,
+                          float brightness, int light,
+                          boolean[] tileGlow, int glowLight, float glowBrightness) {
+        emit(matrix, consumer, brightness, light, tileGlow, glowLight, glowBrightness);
+    }
+
+    private void emit(Matrix4fc matrix, VertexConsumer consumer,
+                      float brightness, int light,
+                      boolean[] tileGlow, int glowLight, float glowBrightness) {
         for (int quad = 0; quad < count; quad++) {
+            boolean glow = tileGlow != null && quadTiles != null
+                    && glowAt(tileGlow, quadTiles[quad]);
+            int color = brighten(colors[quad], glow ? glowBrightness : brightness);
+            int vertexLight = glow ? glowLight : light;
             int p = quad * 12;
-            int color = brighten(colors[quad], brightness);
             for (int vertex = 0; vertex < 4; vertex++) {
                 int o = p + vertex * 3;
                 consumer.addVertex(matrix, positions[o], positions[o + 1], positions[o + 2])
                         .setColor(color)
                         .setUv(0.0f, 0.0f)
-                        .setLight(light)
+                        .setLight(vertexLight)
                         .setOverlay(OverlayTexture.NO_OVERLAY)
                         .setNormal(0.0f, 0.0f, 1.0f);
             }
         }
+    }
+
+    private static boolean glowAt(boolean[] tileGlow, int tile) {
+        return tile >= 0 && tile < tileGlow.length && tileGlow[tile];
     }
 
     /** Two vertices per segment; RenderTypes.lines() consumes pairs. */

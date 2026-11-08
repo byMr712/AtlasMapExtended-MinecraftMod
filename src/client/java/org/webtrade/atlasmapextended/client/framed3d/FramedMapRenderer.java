@@ -27,6 +27,7 @@ public final class FramedMapRenderer {
     /** Glow item frames make the relief and its objects look sunlit. */
     private static final float GLOW_MESH_BRIGHTNESS = 1.45f;
     private static final float GLOW_ICON_BRIGHTNESS = 1.5f;
+    private static final int GLOW_LIGHT = 15728880;
     /** One full eased turn, then a short rest before the next one. */
     private static final int SPIN_TICKS = 80;
     private static final int SPIN_PAUSE = 5;
@@ -85,7 +86,9 @@ public final class FramedMapRenderer {
         float meshBrightness = state.isGlowFrame ? GLOW_MESH_BRIGHTNESS : 1.0f;
         float iconBrightness = state.isGlowFrame ? GLOW_ICON_BRIGHTNESS : 1.0f;
         // A normal frame is lit by the room; a glowing frame is self-lit.
-        int light = state.isGlowFrame ? 15728880 : state.lightCoords;
+        int light = state.isGlowFrame ? GLOW_LIGHT : state.lightCoords;
+        boolean[] groupGlow = div > 1 ? FramedMapConnections.currentGroupGlow() : null;
+        int groupLight = groupGlow != null ? FramedMapConnections.currentGroupLight() : light;
         pose.pushPose();
         if (div > 1) {
             // The whole mega-map is one mesh. Map its full 128x128 image into
@@ -97,11 +100,20 @@ public final class FramedMapRenderer {
         } else {
             pose.scale(1.0f, 1.0f, -1.0f);
         }
-        collector.submitCustomGeometry(pose, RenderTypes.entityCutout(WHITE, false),
-                (p, consumer) -> mesh.emit(p.pose(), consumer, meshBrightness, light));
+        if (groupGlow != null) {
+            // One shared mesh, but each quad knows its physical frame tile,
+            // so only the glow frames' parts are self-lit.
+            collector.submitCustomGeometry(pose, RenderTypes.entityCutout(WHITE, false),
+                    (p, consumer) -> mesh.emitTiled(p.pose(), consumer, 1.0f, groupLight,
+                            groupGlow, GLOW_LIGHT, GLOW_MESH_BRIGHTNESS));
+        } else {
+            collector.submitCustomGeometry(pose, RenderTypes.entityCutout(WHITE, false),
+                    (p, consumer) -> mesh.emit(p.pose(), consumer, meshBrightness, light));
+        }
         if (mesh.lineCount() > 0) {
+            float lineBrightness = groupGlow != null ? 1.0f : meshBrightness;
             collector.submitCustomGeometry(pose, RenderTypes.lines(),
-                    (p, consumer) -> mesh.emitLines(p.pose(), consumer, meshBrightness));
+                    (p, consumer) -> mesh.emitLines(p.pose(), consumer, lineBrightness));
         }
         float angle = spinAngle(gameTime);
         boolean verticalFrame = state.direction != null && state.direction.getAxis().isVertical();
@@ -131,9 +143,15 @@ public final class FramedMapRenderer {
                         matrix.rotateY(angle);
                     }
                     float yOffset = arrowIcon ? -8.0f : -16.0f;
+                    boolean glow = groupGlow != null
+                            && iconGlow(groupGlow, div, icon.x(), icon.y());
+                    float brightness = groupGlow != null
+                            ? (glow ? GLOW_ICON_BRIGHTNESS : 1.0f) : iconBrightness;
+                    int iconLight = groupGlow != null
+                            ? (glow ? GLOW_LIGHT : groupLight) : light;
                     matrix.scale(iconScale, iconScale, iconScale)
                             .translate(-8.0f, yOffset, -shape.depth / 2.0f);
-                    shape.emit(matrix, consumer, iconBrightness, light);
+                    shape.emit(matrix, consumer, brightness, iconLight);
                 }
             });
         }
@@ -142,6 +160,16 @@ public final class FramedMapRenderer {
 
     private static int megatileRotation(int div, int rotation) {
         return div > 1 ? rotation & 3 : 0;
+    }
+
+    /** Glow flag of the physical mega-group frame under a map-pixel icon. */
+    private static boolean iconGlow(boolean[] glowTiles, int div, float x, float y) {
+        int col = (int) (x * div / FramedMapVolume.SIZE);
+        int row = (int) (y * div / FramedMapVolume.SIZE);
+        col = Math.max(0, Math.min(div - 1, col));
+        row = Math.max(0, Math.min(div - 1, row));
+        int index = row * div + col;
+        return index < glowTiles.length && glowTiles[index];
     }
 
     /**

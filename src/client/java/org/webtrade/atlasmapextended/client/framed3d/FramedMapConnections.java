@@ -14,6 +14,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
+import net.minecraft.world.entity.decoration.GlowItemFrame;
 import net.minecraft.world.entity.decoration.ItemFrame;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
@@ -74,7 +75,8 @@ public final class FramedMapConnections {
                           int tileDiv, int tileCol, int tileRow, int tileRotation,
                           boolean glow, int light, boolean hideFrame,
                           boolean suppress3D, boolean active3D, boolean groupLeader,
-                          boolean observed, Vec3 center) {
+                          boolean observed, Vec3 center,
+                          boolean[] groupGlow, int groupLight) {
     }
 
     private record Key(long pos, int direction, int mapId, int rotation, ResourceKey<Level> dimension) {
@@ -82,7 +84,8 @@ public final class FramedMapConnections {
 
     private record Cached(long tick, int frameMask, int textureMask, int worldMask,
                           int tileDiv, int tileCol, int tileRow, int singleRotation,
-                          boolean suppress3D, GroupKey group, Vec3 center) {
+                          boolean suppress3D, GroupKey group, Vec3 center,
+                          boolean[] groupGlow) {
     }
 
     private record SingleKey(long pos, int direction, int mapId, ResourceKey<Level> dimension) {
@@ -108,17 +111,20 @@ public final class FramedMapConnections {
         final int minD;
         final Direction imgRight;
         final Direction imgDown;
+        /** Row-major glow flags of the physical N×N frames. */
+        final boolean[] glowTiles;
         final Set<Long> members = new HashSet<>();
         long scanTick;
 
         GroupInfo(GroupKey key, int div, int minR, int minD,
-                  Direction imgRight, Direction imgDown) {
+                  Direction imgRight, Direction imgDown, boolean[] glowTiles) {
             this.key = key;
             this.div = div;
             this.minR = minR;
             this.minD = minD;
             this.imgRight = imgRight;
             this.imgDown = imgDown;
+            this.glowTiles = glowTiles;
         }
 
         TileInfo tileAt(BlockPos pos) {
@@ -132,6 +138,8 @@ public final class FramedMapConnections {
         final Map<Long, Integer> last = new HashMap<>();
         /** Entity ids of the frames that formed this group. */
         final Set<Integer> entities = new HashSet<>();
+        /** World light of a non-glowing tile, used for the normal parts. */
+        int normalLight = -1;
     }
 
     private static final Map<GroupKey, GroupState> GROUPS = new HashMap<>();
@@ -184,6 +192,16 @@ public final class FramedMapConnections {
     /** World centre of the map or mega group, used for gaze and distance LOD. */
     public static Vec3 currentCenter() {
         return current != null ? current.center() : null;
+    }
+
+    /** Per-tile glow flags of the current mega group, null for one map. */
+    public static boolean[] currentGroupGlow() {
+        return current != null ? current.groupGlow() : null;
+    }
+
+    /** World light for the non-glowing part of the current mega group. */
+    public static int currentGroupLight() {
+        return current != null ? current.groupLight() : 15728880;
     }
 
     /**
@@ -341,7 +359,8 @@ public final class FramedMapConnections {
             Vec3 center = new Vec3(centerX, centerY, centerZ);
             cached = new Cached(tick, frameMask, textureMask, worldMask,
                     tile.div(), tile.col(), tile.row(), singleRotation,
-                    tile.suppress3D(), tile.group(), center);
+                    tile.suppress3D(), tile.group(), center,
+                    mega && info != null ? info.glowTiles : null);
             if (CACHE.size() > MAX_CACHE) {
                 CACHE.clear();
             }
@@ -370,6 +389,18 @@ public final class FramedMapConnections {
         int tileRotation = cached.group() != null
                 ? groupRotation(cached.group()) : cached.singleRotation();
         int light = state.isGlowFrame ? 15728880 : state.lightCoords;
+        int groupLight = -1;
+        if (cached.group() != null) {
+            GroupState groupState = GROUPS.get(cached.group());
+            if (groupState != null) {
+                // Normal tiles keep the room light; a glowing leader must not
+                // make the non-glowing part of the group fullbright.
+                if (groupState.normalLight < 0 || !state.isGlowFrame) {
+                    groupState.normalLight = state.lightCoords;
+                }
+                groupLight = groupState.normalLight;
+            }
+        }
         boolean suppress = cached.suppress3D();
         boolean active3D = front && !suppress;
         boolean groupLeader = active3D
@@ -378,7 +409,7 @@ public final class FramedMapConnections {
         current = new Context(frameMask, textureMask, worldMask,
                 cached.tileDiv(), cached.tileCol(), cached.tileRow(), tileRotation,
                 state.isGlowFrame, light, worldMask != 0, cached.suppress3D(), active3D,
-                groupLeader, observed, cached.center());
+                groupLeader, observed, cached.center(), cached.groupGlow(), groupLight);
     }
 
     public static void end() {
@@ -706,7 +737,15 @@ public final class FramedMapConnections {
                 }
             }
         }
-        GroupInfo info = new GroupInfo(group, cols, minR, minD, imgRight, imgDown);
+        boolean[] glowTiles = new boolean[cols * cols];
+        for (Map.Entry<BlockPos, ItemFrame> entry : members.entrySet()) {
+            if (entry.getValue() instanceof GlowItemFrame) {
+                int glowCol = dot(entry.getKey(), imgRight) - minR;
+                int glowRow = dot(entry.getKey(), imgDown) - minD;
+                glowTiles[glowRow * cols + glowCol] = true;
+            }
+        }
+        GroupInfo info = new GroupInfo(group, cols, minR, minD, imgRight, imgDown, glowTiles);
         info.members.addAll(currentMembers);
         info.scanTick = level.getGameTime();
         GroupInfo old = GROUP_INFO.put(group, info);
