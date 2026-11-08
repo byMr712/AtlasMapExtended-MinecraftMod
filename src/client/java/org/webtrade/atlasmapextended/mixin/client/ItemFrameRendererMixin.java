@@ -129,11 +129,10 @@ public class ItemFrameRendererMixin {
             }
             boolean suppress3D = FramedMapConnections.currentSuppress3D();
             boolean show2D = !ModConfig.get().framedMaps3D || suppress3D;
-            boolean glow = state.isGlowFrame;
             var texture = HeldMapTextures.getFramed(
                     state.mapId, data, FramedMapConnections.currentTextureMask(),
                     tileDiv, FramedMapConnections.currentTileCol(), FramedMapConnections.currentTileRow(),
-                    FramedMapConnections.currentTileRotation(), glow, show2D);
+                    FramedMapConnections.currentTileRotation(), show2D);
             if (texture != null) {
                 state.mapRenderState.texture = texture;
             }
@@ -148,7 +147,7 @@ public class ItemFrameRendererMixin {
     private int atlasmapextended$mapLight(int light) {
         FramedMapConnections.Context context = FramedMapConnections.context();
         if (context != null && context.glow()) {
-            return 15728880;
+            return 15728850;
         }
         return light;
     }
