@@ -53,35 +53,44 @@ public final class HeldMapTextures {
     }
 
     public static Identifier get(MapId mapId, MapItemSavedData data) {
-        return get(mapId, data, true, 0, true);
+        return get(mapId, data, true, 0, true, data.centerX, data.centerZ);
     }
 
     /** Frame base: with 3D disabled it also gets the 2D snapshot overlay. */
     public static Identifier getFramed(MapId mapId, MapItemSavedData data) {
-        return getFramed(mapId, data, 0);
+        return getFramed(mapId, data, 0, data.centerX, data.centerZ);
     }
 
     public static Identifier getFramed(MapId mapId, MapItemSavedData data, int textureMask) {
+        return getFramed(mapId, data, textureMask, data.centerX, data.centerZ);
+    }
+
+    public static Identifier getFramed(MapId mapId, MapItemSavedData data, int textureMask,
+                                       int tileCenterX, int tileCenterZ) {
         // A framed map has no paper margin: its content must reach the edge so
         // neighbouring frames form one picture. A held map keeps the margin.
-        return get(mapId, data, !ModConfig.get().framedMaps3D, textureMask, false);
+        return get(mapId, data, !ModConfig.get().framedMaps3D, textureMask, false,
+                tileCenterX, tileCenterZ);
     }
 
     private static Identifier get(MapId mapId, MapItemSavedData data, boolean withOverlay,
-                                  int textureMask, boolean border) {
+                                  int textureMask, boolean border, int tileCenterX, int tileCenterZ) {
         if (data.colors == null) {
             return null;
         }
         int id = mapId.id();
         int mask = textureMask & 0x0F;
-        FramedMapOverlay overlay = withOverlay ? overlayFor(mapId, data) : null;
+        boolean tile = tileCenterX != data.centerX || tileCenterZ != data.centerZ;
+        FramedMapOverlay overlay = withOverlay ? overlayFor(mapId, data, tileCenterX, tileCenterZ) : null;
         long hash = Arrays.hashCode(data.colors) * 31L + (overlay == null ? 0 : 1)
-                + (withOverlay ? 1 : 0) + mask * 17L + (border ? 1 : 0);
-        String cacheKey = id + (withOverlay ? "h" : "f") + (border ? "b" : "n") + "_" + mask;
+                + (withOverlay ? 1 : 0) + mask * 17L + (border ? 1 : 0)
+                + tileCenterX * 31L + tileCenterZ;
+        String cacheKey = id + (withOverlay ? "h" : "f") + (border ? "b" : "n")
+                + "_" + mask + "_" + tileCenterX + "_" + tileCenterZ;
         Entry entry = ENTRIES.get(cacheKey);
         if (entry == null) {
             Identifier textureId = Paper.id((withOverlay ? "held_map/" : "framed_map/")
-                    + id + (border ? "b" : "n") + "_" + mask);
+                    + id + (border ? "b" : "n") + "_" + mask + "_" + tileCenterX + "_" + tileCenterZ);
             DynamicTexture texture = new DynamicTexture(
                     () -> "atlasmap-held-" + id, SIZE, SIZE, false);
             Minecraft.getInstance().getTextureManager().register(textureId, texture);
@@ -90,7 +99,8 @@ public final class HeldMapTextures {
         }
         if (entry.hash != hash) {
             entry.hash = hash;
-            paint(entry.texture.getPixels(), data.colors, overlay, data, mask, border);
+            paint(entry.texture.getPixels(), data.colors, overlay, data, mask, border,
+                    tile, tileCenterX, tileCenterZ);
             entry.texture.upload();
         }
         return entry.id;
@@ -106,47 +116,58 @@ public final class HeldMapTextures {
         };
     }
 
-    private static FramedMapOverlay overlayFor(MapId mapId, MapItemSavedData data) {
+    private static FramedMapOverlay overlayFor(MapId mapId, MapItemSavedData data,
+                                               int centerX, int centerZ) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null) {
             return null;
         }
         FramedMapKey key = new FramedMapKey(
                 data.dimension, mapId.id(),
-                data.centerX, data.centerZ, data.scale,
+                centerX, centerZ, data.scale,
                 mc.level.getMinY(), mc.level.getHeight());
         return FramedOverlayStorage.getOrCapture(key);
     }
 
     private static void paint(NativeImage image, byte[] colors, FramedMapOverlay overlay,
-                              MapItemSavedData data, int textureMask, boolean border) {
+                              MapItemSavedData data, int textureMask, boolean border,
+                              boolean tile, int tileCenterX, int tileCenterZ) {
         // Prefer the mod's own tiles: they already carry the height shading and
         // water-depth palette used by the minimap and the world map.
         MapSession session = MapManager.live();
         MapLayer layer = session == null ? null : session.layer(data.dimension.identifier().toString());
         int scaleFactor = 1 << data.scale;
+        int centerX = tile ? tileCenterX : data.centerX;
+        int centerZ = tile ? tileCenterZ : data.centerZ;
         for (int y = 0; y < SIZE; y++) {
             for (int x = 0; x < SIZE; x++) {
-                int packed = colors[y * SIZE + x] & 0xFF;
+                int wx = centerX + (x - 64) * scaleFactor;
+                int wz = centerZ + (y - 64) * scaleFactor;
+                int packed = 0;
+                int mx = 64 + Math.floorDiv(wx - data.centerX, scaleFactor);
+                int mz = 64 + Math.floorDiv(wz - data.centerZ, scaleFactor);
+                if (mx >= 0 && mz >= 0 && mx < SIZE && mz < SIZE) {
+                    packed = colors[mz * SIZE + mx] & 0xFF;
+                }
                 int argb = 0;
-                if (packed == 0) {
-                    argb = PAPER_LIGHT;
-                } else if (layer != null) {
-                    int wx = data.centerX + (x - 64) * scaleFactor;
-                    int wz = data.centerZ + (y - 64) * scaleFactor;
-                    MapTile tile = layer.getForRead(
+                if (layer != null) {
+                    MapTile mapTile = layer.getForRead(
                             Math.floorDiv(wx, MapTile.SIZE), Math.floorDiv(wz, MapTile.SIZE));
-                    if (tile != null) {
-                        argb = tile.getPixel(Math.floorMod(wx, MapTile.SIZE),
+                    if (mapTile != null) {
+                        argb = mapTile.getPixel(Math.floorMod(wx, MapTile.SIZE),
                                 Math.floorMod(wz, MapTile.SIZE));
                     }
                 }
                 if (argb == 0) {
-                    // Fallback for areas the mod has not scanned yet: vanilla
-                    // colours still keep the same papyrus palette.
-                    MapColor color = MapColor.byId(packed >> 2);
-                    int waterDepth = color == MapColor.WATER ? waterDepth(packed & 3) : 0;
-                    argb = ChunkScanner.papyrus(color.col, 0, 0, 0, waterDepth, x, y);
+                    if (packed == 0) {
+                        argb = PAPER_LIGHT;
+                    } else {
+                        // Fallback for areas the mod has not scanned yet: vanilla
+                        // colours still keep the same papyrus palette.
+                        MapColor color = MapColor.byId(packed >> 2);
+                        int waterDepth = color == MapColor.WATER ? waterDepth(packed & 3) : 0;
+                        argb = ChunkScanner.papyrus(color.col, 0, 0, 0, waterDepth, wx, wz);
+                    }
                 }
                 image.setPixelABGR(x, y, abgr(argb));
             }

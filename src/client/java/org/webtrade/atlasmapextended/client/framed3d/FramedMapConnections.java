@@ -25,6 +25,7 @@ import org.joml.Matrix4fc;
 import org.joml.Vector3f;
 import org.webtrade.atlasmapextended.client.gui.Paper;
 
+import java.util.ArrayDeque;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -59,13 +60,15 @@ public final class FramedMapConnections {
     }
 
     public record Context(int frameMask, int textureMask, int worldMask,
+                          int tileCenterX, int tileCenterZ,
                           boolean glow, int light, boolean hideFrame) {
     }
 
     private record Key(long pos, int direction, int mapId, int rotation, ResourceKey<Level> dimension) {
     }
 
-    private record Cached(long tick, int frameMask, int textureMask, int worldMask) {
+    private record Cached(long tick, int frameMask, int textureMask, int worldMask,
+                          int tileCenterX, int tileCenterZ) {
     }
 
     public static Context context() {
@@ -75,6 +78,14 @@ public final class FramedMapConnections {
     /** Texture-side mask for the frame currently being submitted. */
     public static int currentTextureMask() {
         return current == null ? 0 : current.textureMask();
+    }
+
+    public static int currentTileCenterX() {
+        return current == null ? Integer.MIN_VALUE : current.tileCenterX();
+    }
+
+    public static int currentTileCenterZ() {
+        return current == null ? Integer.MIN_VALUE : current.tileCenterZ();
     }
 
     /** Call at the start of {@code ItemFrameRenderer.submit}. */
@@ -99,14 +110,16 @@ public final class FramedMapConnections {
             int textureMask = state.direction.getAxis() == Direction.Axis.Y
                     ? worldTextureMask(worldMask)
                     : textureMask(frameMask, state.rotation);
-            cached = new Cached(tick, frameMask, textureMask, worldMask);
+            int[] tile = computeTileCenter(level, pos, state, data);
+            cached = new Cached(tick, frameMask, textureMask, worldMask, tile[0], tile[1]);
             if (CACHE.size() > MAX_CACHE) {
                 CACHE.clear();
             }
             CACHE.put(key, cached);
             if (previous == null || previous.frameMask() != frameMask
                     || previous.worldMask() != worldMask || !LOGGED_KEYS.contains(key)) {
-                logSummary(level, pos, state, data, frameMask, textureMask, worldMask);
+                logSummary(level, pos, state, data, frameMask, textureMask, worldMask,
+                        tile[0], tile[1]);
                 LOGGED_KEYS.add(key);
             }
         }
@@ -116,7 +129,9 @@ public final class FramedMapConnections {
         int textureMask = front ? cached.textureMask() : 0;
         int worldMask = front ? cached.worldMask() : 0;
         int light = state.isGlowFrame ? 15728880 : state.lightCoords;
-        current = new Context(frameMask, textureMask, worldMask, state.isGlowFrame, light, worldMask != 0);
+        current = new Context(frameMask, textureMask, worldMask,
+                cached.tileCenterX(), cached.tileCenterZ(),
+                state.isGlowFrame, light, worldMask != 0);
     }
 
     public static void end() {
@@ -176,6 +191,12 @@ public final class FramedMapConnections {
 
     private static boolean hasNeighbour(ClientLevel level, BlockPos pos, Direction direction, int rotation,
                                         MapItemSavedData ownData) {
+        return frameAt(level, pos, direction, rotation, ownData) != null;
+    }
+
+    /** The item frame that occupies exactly this block, or null. */
+    private static ItemFrame frameAt(ClientLevel level, BlockPos pos, Direction direction, int rotation,
+                                     MapItemSavedData ownData) {
         AABB box = new AABB(pos.getX(), pos.getY(), pos.getZ(),
                 pos.getX() + 1.0, pos.getY() + 1.0, pos.getZ() + 1.0).inflate(0.01);
         for (ItemFrame frame : level.getEntitiesOfClass(ItemFrame.class, box)) {
@@ -198,9 +219,133 @@ public final class FramedMapConnections {
                     || !other.dimension.equals(ownData.dimension)) {
                 continue;
             }
-            return true;
+            return frame;
         }
-        return false;
+        return null;
+    }
+
+    /**
+     * Identical maps placed in a grid are treated as tiles of one big map:
+     * each frame samples the world at its own tile offset. Different maps keep
+     * their own centres and simply meet at the frame edges.
+     */
+    private static int[] computeTileCenter(ClientLevel level, BlockPos start, ItemFrameRenderState state,
+                                           MapItemSavedData data) {
+        int[] own = {data.centerX, data.centerZ};
+        if (state.mapId == null) {
+            return own;
+        }
+        Direction localX;
+        Direction localY;
+        switch (state.direction) {
+            case SOUTH -> {
+                localX = Direction.WEST;
+                localY = Direction.UP;
+            }
+            case NORTH -> {
+                localX = Direction.EAST;
+                localY = Direction.UP;
+            }
+            case EAST -> {
+                localX = Direction.SOUTH;
+                localY = Direction.UP;
+            }
+            case WEST -> {
+                localX = Direction.NORTH;
+                localY = Direction.UP;
+            }
+            case UP -> {
+                localX = Direction.WEST;
+                localY = Direction.NORTH;
+            }
+            default -> {
+                localX = Direction.WEST;
+                localY = Direction.SOUTH;
+            }
+        }
+        double angle = Math.toRadians(180.0 + (state.rotation & 3) * 90.0);
+        int cx = (int) Math.round(Math.cos(angle));
+        int sy = (int) Math.round(Math.sin(angle));
+        Direction imgRight = directionOf(localX, cx, localY, sy);
+        Direction imgDown = directionOf(localX, -sy, localY, cx);
+
+        Set<BlockPos> seen = new HashSet<>();
+        ArrayDeque<BlockPos> queue = new ArrayDeque<>();
+        seen.add(start);
+        queue.add(start);
+        int minR = Integer.MAX_VALUE;
+        int maxR = Integer.MIN_VALUE;
+        int minD = Integer.MAX_VALUE;
+        int maxD = Integer.MIN_VALUE;
+        int count = 0;
+
+        while (!queue.isEmpty()) {
+            BlockPos pos = queue.removeFirst();
+            if (++count > 256) {
+                return own;
+            }
+            int r = dot(pos, imgRight);
+            int d = dot(pos, imgDown);
+            minR = Math.min(minR, r);
+            maxR = Math.max(maxR, r);
+            minD = Math.min(minD, d);
+            maxD = Math.max(maxD, d);
+            for (Direction side : planeSides(state.direction)) {
+                BlockPos next = pos.relative(side);
+                if (seen.contains(next)) {
+                    continue;
+                }
+                ItemFrame neighbour = frameAt(level, next, state.direction, state.rotation & 3, data);
+                if (neighbour != null
+                        && state.mapId.equals(neighbour.getItem().get(DataComponents.MAP_ID))) {
+                    seen.add(next);
+                    queue.add(next);
+                }
+            }
+        }
+        if (count <= 1) {
+            return own;
+        }
+
+        int cols = maxR - minR + 1;
+        int rows = maxD - minD + 1;
+        int tileSize = 128 * (1 << data.scale);
+        double col = dot(start, imgRight) - minR - (cols - 1) / 2.0;
+        double row = dot(start, imgDown) - minD - (rows - 1) / 2.0;
+        return new int[]{
+                data.centerX + (int) Math.round(col * tileSize),
+                data.centerZ + (int) Math.round(row * tileSize)
+        };
+    }
+
+    private static Direction[] planeSides(Direction direction) {
+        return switch (direction.getAxis()) {
+            case Y -> new Direction[]{Direction.EAST, Direction.WEST, Direction.SOUTH, Direction.NORTH};
+            case Z -> new Direction[]{Direction.EAST, Direction.WEST, Direction.UP, Direction.DOWN};
+            default -> new Direction[]{Direction.SOUTH, Direction.NORTH, Direction.UP, Direction.DOWN};
+        };
+    }
+
+    private static Direction directionOf(Direction a, int ca, Direction b, int cb) {
+        int x = ca * a.getStepX() + cb * b.getStepX();
+        int y = ca * a.getStepY() + cb * b.getStepY();
+        int z = ca * a.getStepZ() + cb * b.getStepZ();
+        int ax = Math.abs(x);
+        int ay = Math.abs(y);
+        int az = Math.abs(z);
+        if (ax >= ay && ax >= az) {
+            return x >= 0 ? Direction.EAST : Direction.WEST;
+        }
+        if (ay >= az) {
+            return y >= 0 ? Direction.UP : Direction.DOWN;
+        }
+        return z >= 0 ? Direction.SOUTH : Direction.NORTH;
+    }
+
+    private static int dot(BlockPos pos, Direction direction) {
+        return pos.getX() * direction.getStepX()
+                + pos.getY() * direction.getStepY()
+                + pos.getZ() * direction.getStepZ();
     }
 
     /**
@@ -243,14 +388,16 @@ public final class FramedMapConnections {
 
     /** Diagnostic: writes one line per frame and one line per checked side. */
     private static void logSummary(ClientLevel level, BlockPos pos, ItemFrameRenderState state,
-                                   MapItemSavedData data, int frameMask, int textureMask, int worldMask) {
+                                   MapItemSavedData data, int frameMask, int textureMask, int worldMask,
+                                   int tileCenterX, int tileCenterZ) {
         if (!FramedMapDebug.ENABLED) {
             return;
         }
-        FramedMapDebug.log("frame {} map={} center={},{} scale={} dim={} dir={} rot={} mask={} tex={} world={}",
+        FramedMapDebug.log("frame {} map={} center={},{} tile={},{} scale={} dim={} dir={} rot={} mask={} tex={} world={}",
                 pos, state.mapId == null ? "null" : state.mapId.id(),
-                data.centerX, data.centerZ, data.scale, data.dimension.identifier(),
-                state.direction, state.rotation & 3, frameMask, textureMask, worldMask);
+                data.centerX, data.centerZ, tileCenterX, tileCenterZ, data.scale,
+                data.dimension.identifier(), state.direction, state.rotation & 3,
+                frameMask, textureMask, worldMask);
         Direction right;
         Direction up;
         if (state.direction.getAxis() == Direction.Axis.Y) {

@@ -24,6 +24,16 @@ public final class FramedOverlayStorage {
             return null;
         }
         String dim = Storage.dimFolder(key.dimension().identifier().toString());
+        return session.dir.resolve("framed3d").resolve(dim + "_" + key.mapId()
+                + "_" + key.centerX() + "_" + key.centerZ() + "_" + key.scale() + ".overlay.json");
+    }
+
+    private static Path legacyFile(FramedMapKey key) {
+        MapSession session = MapManager.live();
+        if (session == null) {
+            return null;
+        }
+        String dim = Storage.dimFolder(key.dimension().identifier().toString());
         return session.dir.resolve("framed3d").resolve(dim + "_" + key.mapId() + ".overlay.json");
     }
 
@@ -37,6 +47,15 @@ public final class FramedOverlayStorage {
             return overlay;
         }
         overlay = Storage.readJson(path, FramedMapOverlay.class, null);
+        if (overlay == null || !overlay.matches(key)) {
+            Path legacy = legacyFile(key);
+            if (legacy != null) {
+                FramedMapOverlay old = Storage.readJson(legacy, FramedMapOverlay.class, null);
+                if (old != null && old.matches(key)) {
+                    overlay = old;
+                }
+            }
+        }
         if (overlay == null || !overlay.matches(key)) {
             overlay = capture(key);
             if (overlay == null) {

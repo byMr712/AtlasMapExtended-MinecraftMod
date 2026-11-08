@@ -32,6 +32,17 @@ public final class FramedMapStorage {
             return null;
         }
         String dim = Storage.dimFolder(key.dimension().identifier().toString());
+        return session.dir.resolve("framed3d").resolve(dim + "_" + key.mapId()
+                + "_" + key.centerX() + "_" + key.centerZ() + "_" + key.scale() + ".bin");
+    }
+
+    /** Old single-map volumes were stored without the centre in the name. */
+    private static Path legacyFile(FramedMapKey key) {
+        MapSession session = MapManager.live();
+        if (session == null) {
+            return null;
+        }
+        String dim = Storage.dimFolder(key.dimension().identifier().toString());
         return session.dir.resolve("framed3d").resolve(dim + "_" + key.mapId() + ".bin");
     }
 
@@ -83,6 +94,9 @@ public final class FramedMapStorage {
 
     public static FramedMapVolume load(FramedMapKey key) {
         Path path = file(key);
+        if (path == null || !Files.isRegularFile(path)) {
+            path = legacyFile(key);
+        }
         if (path == null || !Files.isRegularFile(path)) {
             return null;
         }
