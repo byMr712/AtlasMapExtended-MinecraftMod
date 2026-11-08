@@ -56,7 +56,38 @@ public final class FramedMapMesher {
     }
 
     public static FramedMapMesh build(FramedMapVolume volume, FramedMapKey key, int startY,
-                                      FramedMapOverlay overlay, int textureMask) {
+                                      FramedMapOverlay overlay, int textureMask,
+                                      int tileDiv, int tileCol, int tileRow) {
+        int div = Math.max(1, tileDiv);
+        int srcX0 = div == 1 ? 0 : tileCol * FramedMapVolume.SIZE / div;
+        int srcX1 = div == 1 ? FramedMapVolume.SIZE : (tileCol + 1) * FramedMapVolume.SIZE / div;
+        int srcZ0 = div == 1 ? 0 : tileRow * FramedMapVolume.SIZE / div;
+        int srcZ1 = div == 1 ? FramedMapVolume.SIZE : (tileRow + 1) * FramedMapVolume.SIZE / div;
+        FramedMapVolume source = volume;
+        if (div > 1) {
+            FramedMapVolume sampled = new FramedMapVolume();
+            sampled.clear();
+            for (int pz = 0; pz < FramedMapVolume.SIZE; pz++) {
+                int sz = srcZ0 + (int) ((long) pz * (srcZ1 - srcZ0) / FramedMapVolume.SIZE);
+                for (int px = 0; px < FramedMapVolume.SIZE; px++) {
+                    int sx = srcX0 + (int) ((long) px * (srcX1 - srcX0) / FramedMapVolume.SIZE);
+                    int from = sz * FramedMapVolume.SIZE + sx;
+                    int to = pz * FramedMapVolume.SIZE + px;
+                    if (!source.valid[from]) {
+                        continue;
+                    }
+                    sampled.valid[to] = true;
+                    sampled.surfaceY[to] = source.surfaceY[from];
+                    sampled.rgb[to] = source.rgb[from];
+                    sampled.water[to] = source.water[from];
+                    sampled.waterDepth[to] = source.waterDepth[from];
+                    System.arraycopy(source.layerColor, from * FramedMapVolume.LAYERS,
+                            sampled.layerColor, to * FramedMapVolume.LAYERS, FramedMapVolume.LAYERS);
+                }
+            }
+            volume = sampled;
+        }
+
         float[] depth = new float[FramedMapVolume.COLUMNS];
         int[] colors = new int[FramedMapVolume.COLUMNS];
         int scaleFactor = key.scaleFactor();
@@ -69,11 +100,13 @@ public final class FramedMapMesher {
                 }
                 int hn = neighbourHeight(volume, px, pz - 1, volume.surfaceY[index]);
                 int hw = neighbourHeight(volume, px - 1, pz, volume.surfaceY[index]);
-                int wx = key.originX() + px * scaleFactor;
-                int wz = key.originZ() + pz * scaleFactor;
+                int sx = srcX0 + (int) ((long) px * (srcX1 - srcX0) / FramedMapVolume.SIZE);
+                int sz = srcZ0 + (int) ((long) pz * (srcZ1 - srcZ0) / FramedMapVolume.SIZE);
+                int wx = key.originX() + sx * scaleFactor;
+                int wz = key.originZ() + sz * scaleFactor;
                 // One map pixel is one terrain block tall even on zoomed-out
                 // maps. Dividing by the map scale made large maps almost flat.
-                float relief = Math.max(0, volume.surfaceY[index] - startY);
+                float relief = Math.max(0, volume.surfaceY[index] - startY) * div;
                 depth[index] = Math.min(MAX_DEPTH, relief) + BASE_OFFSET;
                 int waterDepth = volume.water[index]
                         ? Math.max(1, volume.waterDepth[index] & 0xFF) : 0;
@@ -186,7 +219,8 @@ public final class FramedMapMesher {
         }
 
         if (overlay != null) {
-            addOverlay(volume, startY, depth, lines, icons, overlay, scaleFactor);
+            addOverlay(volume, startY, depth, lines, icons, overlay, scaleFactor,
+                    div, srcX0, srcX1, srcZ0, srcZ1);
         }
         return finish(quads, lines, icons);
     }
@@ -254,11 +288,18 @@ public final class FramedMapMesher {
 
     private static void addOverlay(FramedMapVolume volume, int startY, float[] depth,
                                    List<Line> lines, List<FramedMapMesh.VoxelIcon> icons,
-                                   FramedMapOverlay overlay, int scaleFactor) {
+                                   FramedMapOverlay overlay, int scaleFactor,
+                                   int div, int srcX0, int srcX1, int srcZ0, int srcZ1) {
         for (Marker marker : overlay.markers) {
-            int px = pixelX(overlay, scaleFactor, marker.x);
-            int pz = pixelZ(overlay, scaleFactor, marker.z);
-            if (px < 4 || pz < 4 || px >= FramedMapVolume.SIZE - 4 || pz >= FramedMapVolume.SIZE - 4) {
+            int fullX = pixelX(overlay, scaleFactor, marker.x);
+            int fullZ = pixelZ(overlay, scaleFactor, marker.z);
+            if (fullX < srcX0 + 4 || fullZ < srcZ0 + 4
+                    || fullX >= srcX1 - 4 || fullZ >= srcZ1 - 4) {
+                continue;
+            }
+            int px = tilePixel(fullX, srcX0, srcX1);
+            int pz = tilePixel(fullZ, srcZ0, srcZ1);
+            if (px < 0 || pz < 0 || px >= FramedMapVolume.SIZE || pz >= FramedMapVolume.SIZE) {
                 continue;
             }
             int index = pz * FramedMapVolume.SIZE + px;
@@ -267,36 +308,55 @@ public final class FramedMapMesher {
             }
             float base = Math.max(0.5f, depth[index]);
             String iconName = marker.icon == null || marker.icon.isBlank() ? "pin" : marker.icon;
-            icons.add(new FramedMapMesh.VoxelIcon(iconName, marker.color, px, pz, base + ICON_HOVER));
+            icons.add(new FramedMapMesh.VoxelIcon(iconName, marker.color, px, pz,
+                    base + ICON_HOVER * div));
         }
 
         for (Region region : overlay.regions) {
             double[] pts = region.pts;
             for (int i = 0; i + 3 < pts.length; i += 2) {
                 addLine(volume, overlay, scaleFactor, startY, lines,
-                        pts[i], pts[i + 1], pts[i + 2], pts[i + 3], region.color);
+                        pts[i], pts[i + 1], pts[i + 2], pts[i + 3], region.color,
+                        srcX0, srcX1, srcZ0, srcZ1, div);
             }
             if (pts.length >= 4) {
                 addLine(volume, overlay, scaleFactor, startY, lines,
-                        pts[pts.length - 2], pts[pts.length - 1], pts[0], pts[1], region.color);
+                        pts[pts.length - 2], pts[pts.length - 1], pts[0], pts[1], region.color,
+                        srcX0, srcX1, srcZ0, srcZ1, div);
             }
         }
 
         for (Stroke stroke : overlay.strokes) {
             for (int i = 0; i + 3 < stroke.pts.length; i += 2) {
                 addLine(volume, overlay, scaleFactor, startY, lines,
-                        stroke.pts[i], stroke.pts[i + 1], stroke.pts[i + 2], stroke.pts[i + 3], stroke.color);
+                        stroke.pts[i], stroke.pts[i + 1], stroke.pts[i + 2], stroke.pts[i + 3],
+                        stroke.color, srcX0, srcX1, srcZ0, srcZ1, div);
             }
         }
     }
 
+    private static int tilePixel(int full, int from, int to) {
+        if (full < from || full >= to) {
+            return -1;
+        }
+        return (full - from) * FramedMapVolume.SIZE / Math.max(1, to - from);
+    }
+
     private static void addLine(FramedMapVolume volume, FramedMapOverlay overlay, int scaleFactor,
                                 int startY, List<Line> lines,
-                                double x0, double z0, double x1, double z1, int color) {
-        int px0 = pixelX(overlay, scaleFactor, x0);
-        int pz0 = pixelZ(overlay, scaleFactor, z0);
-        int px1 = pixelX(overlay, scaleFactor, x1);
-        int pz1 = pixelZ(overlay, scaleFactor, z1);
+                                double x0, double z0, double x1, double z1, int color,
+                                int srcX0, int srcX1, int srcZ0, int srcZ1, int div) {
+        int fullX0 = pixelX(overlay, scaleFactor, x0);
+        int fullZ0 = pixelZ(overlay, scaleFactor, z0);
+        int fullX1 = pixelX(overlay, scaleFactor, x1);
+        int fullZ1 = pixelZ(overlay, scaleFactor, z1);
+        int px0 = tilePixel(fullX0, srcX0, srcX1);
+        int pz0 = tilePixel(fullZ0, srcZ0, srcZ1);
+        int px1 = tilePixel(fullX1, srcX0, srcX1);
+        int pz1 = tilePixel(fullZ1, srcZ0, srcZ1);
+        if (px0 < 0 || pz0 < 0 || px1 < 0 || pz1 < 0) {
+            return;
+        }
         if (!inside(px0, pz0) || !inside(px1, pz1)) {
             return;
         }
@@ -305,8 +365,8 @@ public final class FramedMapMesher {
         if (!volume.valid[i0] || !volume.valid[i1]) {
             return;
         }
-        float d0 = Math.max(0.3f, volume.surfaceY[i0] - startY) + 1.5f;
-        float d1 = Math.max(0.3f, volume.surfaceY[i1] - startY) + 1.5f;
+        float d0 = Math.max(0.3f, (volume.surfaceY[i0] - startY) * div) + 1.5f;
+        float d1 = Math.max(0.3f, (volume.surfaceY[i1] - startY) * div) + 1.5f;
         lines.add(new Line(px0, pz0, Math.min(MAX_DEPTH, d0),
                 px1, pz1, Math.min(MAX_DEPTH, d1), color));
     }

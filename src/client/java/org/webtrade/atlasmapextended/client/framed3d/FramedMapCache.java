@@ -5,6 +5,7 @@ import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.world.level.saveddata.maps.MapId;
 import net.minecraft.world.level.saveddata.maps.MapItemSavedData;
 import org.webtrade.atlasmapextended.client.data.ModConfig;
+import org.webtrade.atlasmapextended.client.data.Storage;
 
 import java.util.Arrays;
 import java.util.HashMap;
@@ -37,6 +38,9 @@ public final class FramedMapCache {
     private static final class Entry {
         final FramedMapKey key;
         final int mask;
+        final int tileDiv;
+        final int tileCol;
+        final int tileRow;
         final String id;
         FramedMapVolume volume = new FramedMapVolume();
         long exploredHash;
@@ -52,51 +56,56 @@ public final class FramedMapCache {
         long builtHash;
         long lastBuildTick;
 
-        Entry(FramedMapKey key, int mask) {
+        Entry(FramedMapKey key, int mask, int tileDiv, int tileCol, int tileRow) {
             this.key = key;
             this.mask = mask & 0x0F;
-            this.id = key.dimension().identifier() + "#" + key.mapId() + "#" + this.mask;
+            this.tileDiv = tileDiv;
+            this.tileCol = tileCol;
+            this.tileRow = tileRow;
+            this.id = key.dimension().identifier() + "#" + key.mapId() + "#" + this.mask
+                    + "@" + tileDiv + ":" + tileCol + ":" + tileRow;
         }
     }
 
     /** Called from the item frame renderer. Returns null until the mesh is ready. */
     public static FramedMapMesh getOrRequest(ClientLevel level, MapId mapId, MapItemSavedData data,
-                                             int textureMask, int tileCenterX, int tileCenterZ) {
+                                             int textureMask, int tileDiv, int tileCol, int tileRow) {
         if (!ModConfig.get().framedMaps3D || data.colors == null) {
             return null;
         }
 
         FramedMapKey key = new FramedMapKey(
                 data.dimension, mapId.id(),
-                tileCenterX, tileCenterZ, data.scale,
+                data.centerX, data.centerZ, data.scale,
                 level.getMinY(), level.getHeight());
         int mask = textureMask & 0x0F;
+        int div = Math.max(1, tileDiv);
         String id = key.dimension().identifier() + "#" + key.mapId() + "#" + mask
-                + "@" + tileCenterX + "," + tileCenterZ;
+                + "@" + div + ":" + tileCol + ":" + tileRow;
         long hash = Arrays.hashCode(data.colors);
 
         Entry entry = ENTRIES.get(id);
         if (entry == null) {
-            entry = new Entry(key, mask);
+            entry = new Entry(key, mask, div, tileCol, tileRow);
             entry.overlay = FramedOverlayStorage.getOrCapture(key);
             FramedMapVolume stored = FramedMapStorage.load(key);
             if (stored != null) {
                 entry.volume = stored;
                 entry.exploredHash = hash;
                 entry.builtHash = hash;
-                FramedMapDebug.log("cache map={} mask={} center={},{} tile={},{} scale={} loaded stored volume, valid={}",
+                FramedMapDebug.log("cache map={} mask={} center={},{} tile={}x{} col={} row={} scale={} loaded stored volume, valid={}",
                         mapId.id(), mask, data.centerX, data.centerZ,
-                        tileCenterX, tileCenterZ, data.scale, validCount(entry.volume));
+                        div, div, tileCol, tileRow, data.scale, validCount(entry.volume));
                 startBuild(entry);
             } else {
-                FramedMapDebug.log("cache map={} mask={} center={},{} tile={},{} scale={} start sampling",
+                FramedMapDebug.log("cache map={} mask={} center={},{} tile={}x{} col={} row={} scale={} start sampling",
                         mapId.id(), mask, data.centerX, data.centerZ,
-                        tileCenterX, tileCenterZ, data.scale);
+                        div, div, tileCol, tileRow, data.scale);
                 startSampling(entry, hash);
             }
             ENTRIES.put(id, entry);
         } else if (!entry.key.sameGeometry(key)) {
-            entry = new Entry(key, mask);
+            entry = new Entry(key, mask, div, tileCol, tileRow);
             entry.overlay = FramedOverlayStorage.getOrCapture(key);
             startSampling(entry, hash);
             ENTRIES.put(id, entry);
@@ -119,7 +128,7 @@ public final class FramedMapCache {
         if (!ModConfig.get().framedMaps3D || data.colors == null) {
             return;
         }
-        getOrRequest(level, mapId, data, 0, data.centerX, data.centerZ);
+        getOrRequest(level, mapId, data, 0, 1, 0, 0);
     }
 
     private static void startSampling(Entry entry, long hash) {
@@ -235,7 +244,22 @@ public final class FramedMapCache {
         long hash = entry.exploredHash;
         FramedMapOverlay snapshotOverlay = overlay;
         MESH_POOL.execute(() -> {
-            FramedMapMesh mesh = FramedMapMesher.build(snapshot, key, startY, snapshotOverlay, entry.mask);
+            FramedMapMesh mesh;
+            try {
+                FramedMapDebug.log("meshing start map={} mask={} tile={}x{} col={} row={}",
+                        entry.key.mapId(), entry.mask, entry.tileDiv, entry.tileDiv,
+                        entry.tileCol, entry.tileRow);
+                mesh = FramedMapMesher.build(snapshot, key, startY, snapshotOverlay,
+                        entry.mask, entry.tileDiv, entry.tileCol, entry.tileRow);
+                FramedMapDebug.log("meshing done map={} mask={} tile={}x{} col={} row={} quads={}",
+                        entry.key.mapId(), entry.mask, entry.tileDiv, entry.tileDiv,
+                        entry.tileCol, entry.tileRow, mesh.quadCount());
+            } catch (Throwable t) {
+                Storage.LOG.error("[AtlasMap3D] mesh build failed map={} mask={} tile={}x{} col={} row={}",
+                        entry.key.mapId(), entry.mask, entry.tileDiv, entry.tileDiv,
+                        entry.tileCol, entry.tileRow, t);
+                return;
+            }
             Minecraft.getInstance().execute(() -> {
                 Entry current = ENTRIES.get(entry.id);
                 if (current != entry || entry.generation != generation) {

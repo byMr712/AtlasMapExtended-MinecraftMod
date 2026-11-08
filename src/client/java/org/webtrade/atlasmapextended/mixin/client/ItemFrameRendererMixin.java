@@ -68,9 +68,9 @@ public class ItemFrameRendererMixin {
     ) {
         FramedMapConnections.Context context = FramedMapConnections.context();
         if (context != null && context.hideFrame()) {
-            // In 3D the rim would float above the relief; the merged terrain
-            // itself is the picture. In 2D keep the thin outer rim.
-            if (!ModConfig.get().framedMaps3D) {
+            // In 3D the rim would float above the relief. A mega-map is also
+            // borderless in 2D; only normal groups keep the thin outer rim.
+            if (!ModConfig.get().framedMaps3D && context.tileDiv() <= 1) {
                 FramedMapConnections.renderOuterFrame(
                         pose, collector, context.worldMask(), context.glow(), context.light());
             }
@@ -100,14 +100,13 @@ public class ItemFrameRendererMixin {
         }
         MapItemSavedData data = level.getMapData(state.mapId);
         if (data != null) {
-            int tileX = FramedMapConnections.currentTileCenterX();
-            int tileZ = FramedMapConnections.currentTileCenterZ();
-            if (tileX != Integer.MIN_VALUE && (tileX != data.centerX || tileZ != data.centerZ)) {
+            int tileDiv = FramedMapConnections.currentTileDiv();
+            if (tileDiv > 1) {
                 state.mapRenderState.decorations.clear();
             }
             var texture = HeldMapTextures.getFramed(
                     state.mapId, data, FramedMapConnections.currentTextureMask(),
-                    tileX, tileZ);
+                    tileDiv, FramedMapConnections.currentTileCol(), FramedMapConnections.currentTileRow());
             if (texture != null) {
                 state.mapRenderState.texture = texture;
             }
@@ -128,7 +127,8 @@ public class ItemFrameRendererMixin {
     ) {
         FramedMapRenderer.render(
                 state, pose, collector, FramedMapConnections.currentTextureMask(),
-                FramedMapConnections.currentTileCenterX(),
-                FramedMapConnections.currentTileCenterZ());
+                FramedMapConnections.currentTileDiv(),
+                FramedMapConnections.currentTileCol(),
+                FramedMapConnections.currentTileRow());
     }
 }

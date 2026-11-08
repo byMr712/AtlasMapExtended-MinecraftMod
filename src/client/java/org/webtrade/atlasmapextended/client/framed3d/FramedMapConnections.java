@@ -60,7 +60,7 @@ public final class FramedMapConnections {
     }
 
     public record Context(int frameMask, int textureMask, int worldMask,
-                          int tileCenterX, int tileCenterZ,
+                          int tileDiv, int tileCol, int tileRow,
                           boolean glow, int light, boolean hideFrame) {
     }
 
@@ -68,7 +68,7 @@ public final class FramedMapConnections {
     }
 
     private record Cached(long tick, int frameMask, int textureMask, int worldMask,
-                          int tileCenterX, int tileCenterZ) {
+                          int tileDiv, int tileCol, int tileRow) {
     }
 
     public static Context context() {
@@ -80,12 +80,16 @@ public final class FramedMapConnections {
         return current == null ? 0 : current.textureMask();
     }
 
-    public static int currentTileCenterX() {
-        return current == null ? Integer.MIN_VALUE : current.tileCenterX();
+    public static int currentTileDiv() {
+        return current == null ? 1 : current.tileDiv();
     }
 
-    public static int currentTileCenterZ() {
-        return current == null ? Integer.MIN_VALUE : current.tileCenterZ();
+    public static int currentTileCol() {
+        return current == null ? 0 : current.tileCol();
+    }
+
+    public static int currentTileRow() {
+        return current == null ? 0 : current.tileRow();
     }
 
     /** Call at the start of {@code ItemFrameRenderer.submit}. */
@@ -105,13 +109,21 @@ public final class FramedMapConnections {
         Cached cached = CACHE.get(key);
         if (cached == null || tick - cached.tick() >= CACHE_TICKS) {
             Cached previous = cached;
-            int frameMask = computeFrameMask(level, pos, state, data);
-            int worldMask = computeWorldMask(level, pos, state, data);
+            int[] tile = computeTile(level, pos, state, data);
+            boolean mega = tile[0] > 1;
+            if (mega) {
+                // All identical maps in a complete square share the same
+                // orientation, otherwise a rotated copy would break the big
+                // picture.
+                state.rotation = 0;
+            }
+            int frameMask = computeFrameMask(level, pos, state, data, state.mapId, mega);
+            int worldMask = computeWorldMask(level, pos, state, data, state.mapId, mega);
             int textureMask = state.direction.getAxis() == Direction.Axis.Y
                     ? worldTextureMask(worldMask)
                     : textureMask(frameMask, state.rotation);
-            int[] tile = computeTileCenter(level, pos, state, data);
-            cached = new Cached(tick, frameMask, textureMask, worldMask, tile[0], tile[1]);
+            cached = new Cached(tick, frameMask, textureMask, worldMask,
+                    tile[0], tile[1], tile[2]);
             if (CACHE.size() > MAX_CACHE) {
                 CACHE.clear();
             }
@@ -119,7 +131,7 @@ public final class FramedMapConnections {
             if (previous == null || previous.frameMask() != frameMask
                     || previous.worldMask() != worldMask || !LOGGED_KEYS.contains(key)) {
                 logSummary(level, pos, state, data, frameMask, textureMask, worldMask,
-                        tile[0], tile[1]);
+                        tile[0], tile[1], tile[2]);
                 LOGGED_KEYS.add(key);
             }
         }
@@ -130,7 +142,7 @@ public final class FramedMapConnections {
         int worldMask = front ? cached.worldMask() : 0;
         int light = state.isGlowFrame ? 15728880 : state.lightCoords;
         current = new Context(frameMask, textureMask, worldMask,
-                cached.tileCenterX(), cached.tileCenterZ(),
+                cached.tileDiv(), cached.tileCol(), cached.tileRow(),
                 state.isGlowFrame, light, worldMask != 0);
     }
 
@@ -154,7 +166,7 @@ public final class FramedMapConnections {
     }
 
     private static int computeFrameMask(ClientLevel level, BlockPos pos, ItemFrameRenderState state,
-                                        MapItemSavedData data) {
+                                        MapItemSavedData data, MapId ownId, boolean mega) {
         Direction right;
         Direction up;
         Direction dir = state.direction;
@@ -174,29 +186,29 @@ public final class FramedMapConnections {
 
         int mask = 0;
         int rotation = state.rotation & 3;
-        if (hasNeighbour(level, pos.relative(right), dir, rotation, data)) {
+        if (hasNeighbour(level, pos.relative(right), dir, rotation, data, ownId, mega)) {
             mask |= SIDE_POS_X;
         }
-        if (hasNeighbour(level, pos.relative(right.getOpposite()), dir, rotation, data)) {
+        if (hasNeighbour(level, pos.relative(right.getOpposite()), dir, rotation, data, ownId, mega)) {
             mask |= SIDE_NEG_X;
         }
-        if (hasNeighbour(level, pos.relative(up), dir, rotation, data)) {
+        if (hasNeighbour(level, pos.relative(up), dir, rotation, data, ownId, mega)) {
             mask |= SIDE_POS_Y;
         }
-        if (hasNeighbour(level, pos.relative(up.getOpposite()), dir, rotation, data)) {
+        if (hasNeighbour(level, pos.relative(up.getOpposite()), dir, rotation, data, ownId, mega)) {
             mask |= SIDE_NEG_Y;
         }
         return mask;
     }
 
     private static boolean hasNeighbour(ClientLevel level, BlockPos pos, Direction direction, int rotation,
-                                        MapItemSavedData ownData) {
-        return frameAt(level, pos, direction, rotation, ownData) != null;
+                                        MapItemSavedData ownData, MapId ownId, boolean mega) {
+        return frameAt(level, pos, direction, rotation, ownData, ownId, mega) != null;
     }
 
     /** The item frame that occupies exactly this block, or null. */
     private static ItemFrame frameAt(ClientLevel level, BlockPos pos, Direction direction, int rotation,
-                                     MapItemSavedData ownData) {
+                                     MapItemSavedData ownData, MapId ownId, boolean mega) {
         AABB box = new AABB(pos.getX(), pos.getY(), pos.getZ(),
                 pos.getX() + 1.0, pos.getY() + 1.0, pos.getZ() + 1.0).inflate(0.01);
         for (ItemFrame frame : level.getEntitiesOfClass(ItemFrame.class, box)) {
@@ -206,12 +218,16 @@ public final class FramedMapConnections {
             if (!frame.blockPosition().equals(pos)) {
                 continue;
             }
-            if (frame.getDirection() != direction || (frame.getRotation() & 3) != rotation) {
-                continue;
-            }
             ItemStack stack = frame.getItem();
             MapId id = stack.get(DataComponents.MAP_ID);
             if (id == null) {
+                continue;
+            }
+            if (frame.getDirection() != direction) {
+                continue;
+            }
+            boolean sameMap = id.equals(ownId);
+            if (!(mega && sameMap) && (frame.getRotation() & 3) != rotation) {
                 continue;
             }
             MapItemSavedData other = level.getMapData(id);
@@ -224,16 +240,39 @@ public final class FramedMapConnections {
         return null;
     }
 
+    /** Same map, same plane, same scale, rotation intentionally ignored. */
+    private static ItemFrame sameMapFrameAt(ClientLevel level, BlockPos pos, Direction direction,
+                                            MapId ownId, MapItemSavedData ownData) {
+        AABB box = new AABB(pos.getX(), pos.getY(), pos.getZ(),
+                pos.getX() + 1.0, pos.getY() + 1.0, pos.getZ() + 1.0).inflate(0.01);
+        for (ItemFrame frame : level.getEntitiesOfClass(ItemFrame.class, box)) {
+            if (!frame.blockPosition().equals(pos) || frame.getDirection() != direction) {
+                continue;
+            }
+            ItemStack stack = frame.getItem();
+            MapId id = stack.get(DataComponents.MAP_ID);
+            if (id == null || !id.equals(ownId)) {
+                continue;
+            }
+            MapItemSavedData other = level.getMapData(id);
+            if (other != null && other.scale == ownData.scale
+                    && other.dimension.equals(ownData.dimension)) {
+                return frame;
+            }
+        }
+        return null;
+    }
+
     /**
-     * Identical maps placed in a grid are treated as tiles of one big map:
-     * each frame samples the world at its own tile offset. Different maps keep
-     * their own centres and simply meet at the frame edges.
+     * A complete N×N group of identical maps becomes one big picture: each
+     * frame shows one sub-rectangle of the same map, scaled to the frame.
+     * Rectangles and incomplete groups do not become a mega-map.
      */
-    private static int[] computeTileCenter(ClientLevel level, BlockPos start, ItemFrameRenderState state,
-                                           MapItemSavedData data) {
-        int[] own = {data.centerX, data.centerZ};
+    private static int[] computeTile(ClientLevel level, BlockPos start, ItemFrameRenderState state,
+                                     MapItemSavedData data) {
+        int[] none = {1, 0, 0};
         if (state.mapId == null) {
-            return own;
+            return none;
         }
         Direction localX;
         Direction localY;
@@ -263,11 +302,8 @@ public final class FramedMapConnections {
                 localY = Direction.SOUTH;
             }
         }
-        double angle = Math.toRadians(180.0 + (state.rotation & 3) * 90.0);
-        int cx = (int) Math.round(Math.cos(angle));
-        int sy = (int) Math.round(Math.sin(angle));
-        Direction imgRight = directionOf(localX, cx, localY, sy);
-        Direction imgDown = directionOf(localX, -sy, localY, cx);
+        Direction imgRight = localX.getOpposite();
+        Direction imgDown = localY.getOpposite();
 
         Set<BlockPos> seen = new HashSet<>();
         ArrayDeque<BlockPos> queue = new ArrayDeque<>();
@@ -282,7 +318,7 @@ public final class FramedMapConnections {
         while (!queue.isEmpty()) {
             BlockPos pos = queue.removeFirst();
             if (++count > 256) {
-                return own;
+                return none;
             }
             int r = dot(pos, imgRight);
             int d = dot(pos, imgDown);
@@ -295,27 +331,21 @@ public final class FramedMapConnections {
                 if (seen.contains(next)) {
                     continue;
                 }
-                ItemFrame neighbour = frameAt(level, next, state.direction, state.rotation & 3, data);
-                if (neighbour != null
-                        && state.mapId.equals(neighbour.getItem().get(DataComponents.MAP_ID))) {
+                if (sameMapFrameAt(level, next, state.direction, state.mapId, data) != null) {
                     seen.add(next);
                     queue.add(next);
                 }
             }
         }
-        if (count <= 1) {
-            return own;
-        }
 
         int cols = maxR - minR + 1;
         int rows = maxD - minD + 1;
-        int tileSize = 128 * (1 << data.scale);
-        double col = dot(start, imgRight) - minR - (cols - 1) / 2.0;
-        double row = dot(start, imgDown) - minD - (rows - 1) / 2.0;
-        return new int[]{
-                data.centerX + (int) Math.round(col * tileSize),
-                data.centerZ + (int) Math.round(row * tileSize)
-        };
+        if (cols <= 1 || cols != rows || count != cols * rows) {
+            return none;
+        }
+        int col = dot(start, imgRight) - minR;
+        int row = dot(start, imgDown) - minD;
+        return new int[]{cols, col, row};
     }
 
     private static Direction[] planeSides(Direction direction) {
@@ -353,7 +383,7 @@ public final class FramedMapConnections {
      * independent of how the frame model is rotated.
      */
     private static int computeWorldMask(ClientLevel level, BlockPos pos, ItemFrameRenderState state,
-                                        MapItemSavedData data) {
+                                        MapItemSavedData data, MapId ownId, boolean mega) {
         Direction a;
         Direction b;
         switch (state.direction.getAxis()) {
@@ -371,16 +401,16 @@ public final class FramedMapConnections {
             }
         }
         int mask = 0;
-        if (hasNeighbour(level, pos.relative(a), state.direction, state.rotation & 3, data)) {
+        if (hasNeighbour(level, pos.relative(a), state.direction, state.rotation & 3, data, ownId, mega)) {
             mask |= 1 << a.ordinal();
         }
-        if (hasNeighbour(level, pos.relative(a.getOpposite()), state.direction, state.rotation & 3, data)) {
+        if (hasNeighbour(level, pos.relative(a.getOpposite()), state.direction, state.rotation & 3, data, ownId, mega)) {
             mask |= 1 << a.getOpposite().ordinal();
         }
-        if (hasNeighbour(level, pos.relative(b), state.direction, state.rotation & 3, data)) {
+        if (hasNeighbour(level, pos.relative(b), state.direction, state.rotation & 3, data, ownId, mega)) {
             mask |= 1 << b.ordinal();
         }
-        if (hasNeighbour(level, pos.relative(b.getOpposite()), state.direction, state.rotation & 3, data)) {
+        if (hasNeighbour(level, pos.relative(b.getOpposite()), state.direction, state.rotation & 3, data, ownId, mega)) {
             mask |= 1 << b.getOpposite().ordinal();
         }
         return mask;
@@ -389,13 +419,13 @@ public final class FramedMapConnections {
     /** Diagnostic: writes one line per frame and one line per checked side. */
     private static void logSummary(ClientLevel level, BlockPos pos, ItemFrameRenderState state,
                                    MapItemSavedData data, int frameMask, int textureMask, int worldMask,
-                                   int tileCenterX, int tileCenterZ) {
+                                   int tileDiv, int tileCol, int tileRow) {
         if (!FramedMapDebug.ENABLED) {
             return;
         }
-        FramedMapDebug.log("frame {} map={} center={},{} tile={},{} scale={} dim={} dir={} rot={} mask={} tex={} world={}",
+        FramedMapDebug.log("frame {} map={} center={},{} tile={}x{} col={} row={} scale={} dim={} dir={} rot={} mask={} tex={} world={}",
                 pos, state.mapId == null ? "null" : state.mapId.id(),
-                data.centerX, data.centerZ, tileCenterX, tileCenterZ, data.scale,
+                data.centerX, data.centerZ, tileDiv, tileDiv, tileCol, tileRow, data.scale,
                 data.dimension.identifier(), state.direction, state.rotation & 3,
                 frameMask, textureMask, worldMask);
         Direction right;
