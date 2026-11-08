@@ -14,6 +14,7 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.Set;
 import java.util.stream.Stream;
 
@@ -26,7 +27,8 @@ public class MapLayer {
     public final String dim;
     private final String key;
     private final Path dir;
-    private final Map<Long, MapTile> tiles = new HashMap<>();
+    private final Map<Long, MapTile> tiles = new ConcurrentHashMap<>();
+    private volatile Long newestTile;
     private final Set<Long> onDisk = new HashSet<>();
     private final Set<Long> broken = new HashSet<>();
     private final Set<Long> loading = new HashSet<>();
@@ -92,21 +94,8 @@ public class MapLayer {
             return null;
         }
         // Anchor on the freshest tile: that is where the player was last.
-        long anchor = keys.iterator().next();
-        long newest = Long.MIN_VALUE;
-        for (long k : keys) {
-            long stamp = 0L;
-            if (onDisk.contains(k)) {
-                try {
-                    stamp = Files.getLastModifiedTime(tileFile(k)).toMillis();
-                } catch (IOException ignored) {
-                }
-            }
-            if (stamp > newest) {
-                newest = stamp;
-                anchor = k;
-            }
-        }
+        Long cached = newestTile;
+        long anchor = (cached != null && keys.contains(cached)) ? cached : keys.iterator().next();
         int ax = (int) (anchor >> 32);
         int az = (int) anchor;
         // Average the tiles around the anchor so the view lands in the middle of that area,
@@ -143,7 +132,10 @@ public class MapLayer {
             return t;
         }
         if (onDisk.contains(k) && !broken.contains(k)) {
-            return load(rx, rz);
+            if (com.mojang.blaze3d.systems.RenderSystem.isOnRenderThread()) {
+                return load(rx, rz);
+            }
+            loadAsync(rx, rz);
         }
         return null;
     }
@@ -212,6 +204,7 @@ public class MapLayer {
             t = new MapTile(key, rx, rz, new NativeImage(MapTile.SIZE, MapTile.SIZE, true));
             tiles.put(k, t);
         }
+        newestTile = k;
         t.touch();
         return t;
     }
@@ -248,6 +241,7 @@ public class MapLayer {
             if (t.diskDirty) {
                 t.diskDirty = false;
                 NativeImage copy = t.snapshot();
+                newestTile = pack(t.rx, t.rz);
                 Path file = dir.resolve(t.rx + "_" + t.rz + ".png");
                 onDisk.add(pack(t.rx, t.rz));
                 Storage.IO.execute(() -> {

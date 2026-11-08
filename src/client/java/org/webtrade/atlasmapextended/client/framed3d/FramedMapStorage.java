@@ -66,10 +66,11 @@ public final class FramedMapStorage {
         }
         FramedMapVolume copy = volume.copy();
         Storage.IO.execute(() -> {
+            Deflater def = new Deflater(1);
             try {
                 Files.createDirectories(path.getParent());
                 try (DataOutputStream out = new DataOutputStream(new DeflaterOutputStream(
-                        Files.newOutputStream(path), new Deflater(1)))) {
+                        Files.newOutputStream(path), def))) {
                     out.writeInt(MAGIC);
                     out.writeInt(VERSION);
                     out.writeInt(key.centerX());
@@ -88,6 +89,8 @@ public final class FramedMapStorage {
                 }
             } catch (IOException e) {
                 Storage.LOG.warn("[AtlasMap3D] could not save {}", path, e);
+            } finally {
+                def.end();
             }
         });
     }
