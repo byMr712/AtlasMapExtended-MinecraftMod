@@ -53,7 +53,7 @@ public final class HeldMapTextures {
     }
 
     public static Identifier get(MapId mapId, MapItemSavedData data) {
-        return get(mapId, data, true, 0);
+        return get(mapId, data, true, 0, true);
     }
 
     /** Frame base: with 3D disabled it also gets the 2D snapshot overlay. */
@@ -62,10 +62,13 @@ public final class HeldMapTextures {
     }
 
     public static Identifier getFramed(MapId mapId, MapItemSavedData data, int textureMask) {
-        return get(mapId, data, !ModConfig.get().framedMaps3D, textureMask);
+        // A framed map has no paper margin: its content must reach the edge so
+        // neighbouring frames form one picture. A held map keeps the margin.
+        return get(mapId, data, !ModConfig.get().framedMaps3D, textureMask, false);
     }
 
-    private static Identifier get(MapId mapId, MapItemSavedData data, boolean withOverlay, int textureMask) {
+    private static Identifier get(MapId mapId, MapItemSavedData data, boolean withOverlay,
+                                  int textureMask, boolean border) {
         if (data.colors == null) {
             return null;
         }
@@ -73,11 +76,12 @@ public final class HeldMapTextures {
         int mask = textureMask & 0x0F;
         FramedMapOverlay overlay = withOverlay ? overlayFor(mapId, data) : null;
         long hash = Arrays.hashCode(data.colors) * 31L + (overlay == null ? 0 : 1)
-                + (withOverlay ? 1 : 0) + mask * 17L;
-        String cacheKey = id + (withOverlay ? "h" : "f") + "_" + mask;
+                + (withOverlay ? 1 : 0) + mask * 17L + (border ? 1 : 0);
+        String cacheKey = id + (withOverlay ? "h" : "f") + (border ? "b" : "n") + "_" + mask;
         Entry entry = ENTRIES.get(cacheKey);
         if (entry == null) {
-            Identifier textureId = Paper.id((withOverlay ? "held_map/" : "framed_map/") + id + "_" + mask);
+            Identifier textureId = Paper.id((withOverlay ? "held_map/" : "framed_map/")
+                    + id + (border ? "b" : "n") + "_" + mask);
             DynamicTexture texture = new DynamicTexture(
                     () -> "atlasmap-held-" + id, SIZE, SIZE, false);
             Minecraft.getInstance().getTextureManager().register(textureId, texture);
@@ -86,7 +90,7 @@ public final class HeldMapTextures {
         }
         if (entry.hash != hash) {
             entry.hash = hash;
-            paint(entry.texture.getPixels(), data.colors, overlay, data, mask);
+            paint(entry.texture.getPixels(), data.colors, overlay, data, mask, border);
             entry.texture.upload();
         }
         return entry.id;
@@ -115,7 +119,7 @@ public final class HeldMapTextures {
     }
 
     private static void paint(NativeImage image, byte[] colors, FramedMapOverlay overlay,
-                              MapItemSavedData data, int textureMask) {
+                              MapItemSavedData data, int textureMask, boolean border) {
         // Prefer the mod's own tiles: they already carry the height shading and
         // water-depth palette used by the minimap and the world map.
         MapSession session = MapManager.live();
@@ -152,6 +156,9 @@ public final class HeldMapTextures {
             paintOverlay(image, overlay);
         }
 
+        if (!border) {
+            return;
+        }
         boolean leftJoined = (textureMask & FramedMapConnections.TEX_LEFT) != 0;
         boolean rightJoined = (textureMask & FramedMapConnections.TEX_RIGHT) != 0;
         boolean topJoined = (textureMask & FramedMapConnections.TEX_TOP) != 0;

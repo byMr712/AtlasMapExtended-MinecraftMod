@@ -50,6 +50,7 @@ public final class FramedMapStorage {
         // Never overwrite a usable volume with an empty pass made while the
         // map's chunks were not loaded.
         if (!any) {
+            FramedMapDebug.log("storage map={} not saved: empty volume", key.mapId());
             return;
         }
         FramedMapVolume copy = volume.copy();
@@ -99,15 +100,24 @@ public final class FramedMapStorage {
                 return null;
             }
             FramedMapVolume volume = new FramedMapVolume();
+            int valid = 0;
             for (int i = 0; i < FramedMapVolume.COLUMNS; i++) {
                 int flags = in.readUnsignedByte();
                 volume.valid[i] = (flags & 1) != 0;
                 volume.water[i] = (flags & 2) != 0;
+                if (volume.valid[i]) {
+                    valid++;
+                }
                 volume.surfaceY[i] = in.readInt();
                 volume.rgb[i] = in.readInt();
                 volume.waterDepth[i] = in.readByte();
                 in.readFully(volume.layerColor, i * FramedMapVolume.LAYERS, FramedMapVolume.LAYERS);
             }
+            if (valid == 0) {
+                FramedMapDebug.log("storage map={} ignored empty stored volume", key.mapId());
+                return null;
+            }
+            FramedMapDebug.log("storage map={} loaded valid={}", key.mapId(), valid);
             return volume;
         } catch (IOException e) {
             Storage.LOG.warn("[AtlasMap3D] could not load {}", path, e);

@@ -17,6 +17,7 @@ import org.webtrade.atlasmapextended.client.data.Marker;
 import org.webtrade.atlasmapextended.client.data.ModConfig;
 import org.webtrade.atlasmapextended.client.data.Storage;
 import org.webtrade.atlasmapextended.client.framed3d.FramedMapCache;
+import org.webtrade.atlasmapextended.client.framed3d.FramedMapDebug;
 import org.webtrade.atlasmapextended.client.gui.ImageCache;
 import org.webtrade.atlasmapextended.client.gui.MapScreen;
 import org.webtrade.atlasmapextended.client.gui.MinimapHud;
@@ -53,6 +54,7 @@ public final class AtlasMapExtendedCommon {
     private static long pendingShotBefore;
     private static int pendingShotTicks;
     private static int heldMapTick;
+    private static boolean loggedConfig;
 
     private AtlasMapExtendedCommon() {
     }
@@ -64,6 +66,12 @@ public final class AtlasMapExtendedCommon {
     public static void onTick(Minecraft mc) {
         ModConfig.tickFirstRunGuiScale();
         loadTheme();
+        if (!loggedConfig) {
+            loggedConfig = true;
+            ModConfig cfg = ModConfig.get();
+            FramedMapDebug.log("debug build active={} config framedMaps3D={} startY={} theme={}",
+                    FramedMapDebug.ENABLED, cfg.framedMaps3D, cfg.framedMapsStartY, cfg.theme);
+        }
         MapManager.tick(mc);
         FramedMapCache.tick(mc.level);
         if (++heldMapTick % 20 == 0) {

@@ -13,6 +13,9 @@ import org.joml.Matrix4f;
 import org.webtrade.atlasmapextended.client.data.ModConfig;
 import org.webtrade.atlasmapextended.client.gui.Paper;
 
+import java.util.HashSet;
+import java.util.Set;
+
 /**
  * Draws the 3D relief right after the vanilla map quad, using the same
  * map-pixel pose (128 px = 1 block).
@@ -26,13 +29,19 @@ public final class FramedMapRenderer {
     /** One full eased turn, then a short rest before the next one. */
     private static final int SPIN_TICKS = 80;
     private static final int SPIN_PAUSE = 5;
+    private static final Set<String> LOGGED = new HashSet<>();
 
     private FramedMapRenderer() {
     }
 
     public static void render(ItemFrameRenderState state, PoseStack pose, SubmitNodeCollector collector,
                               int textureMask) {
-        if (!ModConfig.get().framedMaps3D || state.mapId == null) {
+        if (state.mapId == null) {
+            return;
+        }
+        if (!ModConfig.get().framedMaps3D) {
+            logOnce("disabled:" + state.mapId.id(), "render map={} skipped: framedMaps3D=false",
+                    state.mapId.id());
             return;
         }
         Paper.ensureFrom(WHITE, WHITE);
@@ -43,13 +52,22 @@ public final class FramedMapRenderer {
         }
         MapItemSavedData data = level.getMapData(state.mapId);
         if (data == null || data.colors == null) {
+            logOnce("nodata:" + state.mapId.id(), "render map={} skipped: data={} colors={}",
+                    state.mapId.id(), data != null, data != null && data.colors != null);
             return;
         }
 
         FramedMapMesh mesh = FramedMapCache.getOrRequest(level, state.mapId, data, textureMask);
         if (mesh == null) {
+            logOnce("nomesh:" + state.mapId.id() + ":" + textureMask,
+                    "render map={} mask={} center={},{} scale={} -> mesh not ready",
+                    state.mapId.id(), textureMask, data.centerX, data.centerZ, data.scale);
             return;
         }
+        logOnce("mesh:" + state.mapId.id() + ":" + textureMask + ":" + System.identityHashCode(mesh),
+                "render map={} mask={} center={},{} scale={} glow={} quads={} lines={} icons={}",
+                state.mapId.id(), textureMask, data.centerX, data.centerZ, data.scale,
+                state.isGlowFrame, mesh.quadCount(), mesh.lineCount(), mesh.voxelIcons().size());
         long gameTime = level.getGameTime();
         float meshBrightness = state.isGlowFrame ? GLOW_MESH_BRIGHTNESS : 1.0f;
         float iconBrightness = state.isGlowFrame ? GLOW_ICON_BRIGHTNESS : 1.0f;
@@ -95,6 +113,19 @@ public final class FramedMapRenderer {
             });
         }
         pose.popPose();
+    }
+
+    private static void logOnce(String key, String message, Object... args) {
+        if (LOGGED.size() > 4096) {
+            LOGGED.clear();
+        }
+        if (LOGGED.add(key)) {
+            FramedMapDebug.log(message, args);
+        }
+    }
+
+    public static void clearDiagnostics() {
+        LOGGED.clear();
     }
 
     /**
