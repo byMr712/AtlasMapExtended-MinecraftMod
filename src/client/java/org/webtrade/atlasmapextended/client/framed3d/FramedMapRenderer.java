@@ -59,8 +59,10 @@ public final class FramedMapRenderer {
 
         int div = Math.max(1, tileDiv);
         int rotation = megatileRotation(div, tileRotation);
-        FramedMapMesh mesh = FramedMapCache.getOrRequest(
-                level, state.mapId, data, textureMask, div, tileCol, tileRow, rotation);
+        FramedMapMesh mesh = div > 1
+                ? FramedMapCache.getGroup(level, state.mapId, data, div, rotation)
+                : FramedMapCache.getOrRequest(
+                        level, state.mapId, data, textureMask, div, tileCol, tileRow, rotation);
         if (mesh == null) {
             logOnce("nomesh:" + state.mapId.id() + ":" + textureMask + ":" + div + ":" + tileCol + ":" + tileRow + ":" + rotation,
                     "render map={} mask={} center={},{} tile={}x{} col={} row={} rot={} scale={} -> mesh not ready",
@@ -80,7 +82,16 @@ public final class FramedMapRenderer {
         // A normal frame is lit by the room; a glowing frame is self-lit.
         int light = state.isGlowFrame ? 15728880 : state.lightCoords;
         pose.pushPose();
-        pose.scale(1.0f, 1.0f, -1.0f);
+        if (div > 1) {
+            // The whole mega-map is one mesh. Map its full 128x128 image into
+            // the leader tile's pose: scale the image by N and shift it so the
+            // tile's sub-rectangle lands exactly in this frame.
+            pose.translate(-tileCol * (float) FramedMapVolume.SIZE,
+                    -tileRow * (float) FramedMapVolume.SIZE, 0.0f);
+            pose.scale(div, div, -1.0f);
+        } else {
+            pose.scale(1.0f, 1.0f, -1.0f);
+        }
         collector.submitCustomGeometry(pose, RenderTypes.entityCutout(WHITE, false),
                 (p, consumer) -> mesh.emit(p.pose(), consumer, meshBrightness, light));
         if (mesh.lineCount() > 0) {

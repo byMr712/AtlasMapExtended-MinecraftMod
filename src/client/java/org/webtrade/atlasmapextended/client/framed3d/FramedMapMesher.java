@@ -133,8 +133,17 @@ public final class FramedMapMesher {
     public static FramedMapMesh build(FramedMapVolume volume, FramedMapKey key, int startY,
                                       FramedMapOverlay overlay, int textureMask,
                                       int tileDiv, int tileCol, int tileRow, int tileRotation) {
+        return build(volume, key, startY, overlay, textureMask,
+                tileDiv, tileCol, tileRow, tileRotation, tileDiv);
+    }
+
+    public static FramedMapMesh build(FramedMapVolume volume, FramedMapKey key, int startY,
+                                      FramedMapOverlay overlay, int textureMask,
+                                      int tileDiv, int tileCol, int tileRow, int tileRotation,
+                                      int reliefDiv) {
         int div = Math.max(1, tileDiv);
-        int rotation = div > 1 ? tileRotation & 3 : 0;
+        int relief = Math.max(1, reliefDiv);
+        int rotation = relief > 1 ? tileRotation & 3 : 0;
         int dstX0 = div == 1 ? 0 : tileCol * FramedMapVolume.SIZE / div;
         int dstX1 = div == 1 ? FramedMapVolume.SIZE : (tileCol + 1) * FramedMapVolume.SIZE / div;
         int dstZ0 = div == 1 ? 0 : tileRow * FramedMapVolume.SIZE / div;
@@ -169,10 +178,10 @@ public final class FramedMapMesher {
         float[] depth = new float[FramedMapVolume.COLUMNS];
         int[] colors = new int[FramedMapVolume.COLUMNS];
         int scaleFactor = key.scaleFactor();
-        // A mega-map stretches one source block over {@code div} mesh units in
-        // both axes, so the relief cap must stretch with it. Capping at the
+        // A mega-map stretches one source block over {@code relief} mesh units
+        // in both axes, so the relief cap must stretch with it. Capping at the
         // single-map 96 units flattened every tile bigger than ~2x2.
-        float maxDepth = MAX_DEPTH * div;
+        float maxDepth = MAX_DEPTH * relief;
 
         for (int pz = 0; pz < FramedMapVolume.SIZE; pz++) {
             for (int px = 0; px < FramedMapVolume.SIZE; px++) {
@@ -190,8 +199,8 @@ public final class FramedMapMesher {
                 int wz = key.originZ() + sz * scaleFactor;
                 // One map pixel is one terrain block tall even on zoomed-out
                 // maps. Dividing by the map scale made large maps almost flat.
-                float relief = Math.max(0, volume.surfaceY[index] - startY) * div;
-                depth[index] = Math.min(maxDepth, relief) + BASE_OFFSET;
+                float height = Math.max(0, volume.surfaceY[index] - startY) * relief;
+                depth[index] = Math.min(maxDepth, height) + BASE_OFFSET;
                 int waterDepth = volume.water[index]
                         ? Math.max(1, volume.waterDepth[index] & 0xFF) : 0;
                 colors[index] = ChunkScanner.papyrus(
@@ -298,28 +307,28 @@ public final class FramedMapMesher {
                 // seam with a real wall; overlapping top faces caused
                 // z-fighting and holes at the centre.
                 float east = px + 1 < FramedMapVolume.SIZE ? depth[index + 1]
-                        : seamDepth(source, volume, startY, div, dstX0, dstX1, dstZ0, dstZ1, rotation, px, pz, 1, 0, d, (textureMask & FramedMapConnections.TEX_RIGHT) != 0);
+                        : seamDepth(source, volume, startY, relief, dstX0, dstX1, dstZ0, dstZ1, rotation, px, pz, 1, 0, d, (textureMask & FramedMapConnections.TEX_RIGHT) != 0);
                 if (east < d) {
                     addWallEast(walls, volume, index, scaleFactor, wx, wz,
-                            px + 1, pz, east, d, surfaceColor, div);
+                            px + 1, pz, east, d, surfaceColor, relief);
                 }
                 float west = px > 0 ? depth[index - 1]
-                        : seamDepth(source, volume, startY, div, dstX0, dstX1, dstZ0, dstZ1, rotation, px, pz, -1, 0, d, (textureMask & FramedMapConnections.TEX_LEFT) != 0);
+                        : seamDepth(source, volume, startY, relief, dstX0, dstX1, dstZ0, dstZ1, rotation, px, pz, -1, 0, d, (textureMask & FramedMapConnections.TEX_LEFT) != 0);
                 if (west < d) {
                     addWallWest(walls, volume, index, scaleFactor, wx, wz,
-                            px, pz, west, d, surfaceColor, div);
+                            px, pz, west, d, surfaceColor, relief);
                 }
                 float south = pz + 1 < FramedMapVolume.SIZE ? depth[index + FramedMapVolume.SIZE]
-                        : seamDepth(source, volume, startY, div, dstX0, dstX1, dstZ0, dstZ1, rotation, px, pz, 0, 1, d, (textureMask & FramedMapConnections.TEX_BOTTOM) != 0);
+                        : seamDepth(source, volume, startY, relief, dstX0, dstX1, dstZ0, dstZ1, rotation, px, pz, 0, 1, d, (textureMask & FramedMapConnections.TEX_BOTTOM) != 0);
                 if (south < d) {
                     addWallSouth(walls, volume, index, scaleFactor, wx, wz,
-                            pz + 1, px, south, d, surfaceColor, div);
+                            pz + 1, px, south, d, surfaceColor, relief);
                 }
                 float north = pz > 0 ? depth[index - FramedMapVolume.SIZE]
-                        : seamDepth(source, volume, startY, div, dstX0, dstX1, dstZ0, dstZ1, rotation, px, pz, 0, -1, d, (textureMask & FramedMapConnections.TEX_TOP) != 0);
+                        : seamDepth(source, volume, startY, relief, dstX0, dstX1, dstZ0, dstZ1, rotation, px, pz, 0, -1, d, (textureMask & FramedMapConnections.TEX_TOP) != 0);
                 if (north < d) {
                     addWallNorth(walls, volume, index, scaleFactor, wx, wz,
-                            pz, px, north, d, surfaceColor, div);
+                            pz, px, north, d, surfaceColor, relief);
                 }
                 if (quads.size() >= MAX_QUADS) {
                     return finish(quads, lines, icons);
@@ -333,7 +342,7 @@ public final class FramedMapMesher {
 
         if (overlay != null) {
             addOverlay(volume, startY, depth, lines, icons, overlay, scaleFactor,
-                    div, dstX0, dstX1, dstZ0, dstZ1, rotation);
+                    relief, dstX0, dstX1, dstZ0, dstZ1, rotation);
         }
         return finish(quads, lines, icons);
     }
