@@ -62,12 +62,9 @@ public final class FramedMapConnections {
     private static final Map<Long, GroupKey> POSITION_GROUP = new HashMap<>();
     /** Positions of large unfinished clusters, valid for a few ticks. */
     private static final Map<Long, Long> SUPPRESS_SCAN = new HashMap<>();
-    /** One 3D group at a time keeps the cost equal to a single map. */
-    private static final double MAX_3D_DISTANCE_SQ = 64.0 * 64.0;
-    private static long active3DTick = Long.MIN_VALUE;
-    private static long active3DGroup = Long.MIN_VALUE;
-    private static long active3DLeader = Long.MIN_VALUE;
-    private static double active3DDistance = Double.MAX_VALUE;
+    /** One leader tile per mega group submits that group's shared mesh. */
+    private static final Map<GroupKey, Long> GROUP_LEADERS = new HashMap<>();
+    private static long groupLeaderTick = Long.MIN_VALUE;
     private static Context current;
 
     private FramedMapConnections() {
@@ -176,6 +173,19 @@ public final class FramedMapConnections {
     /** The tile that submits the single shared mega-group mesh. */
     public static boolean currentGroupLeader() {
         return current == null || current.groupLeader();
+    }
+
+    private static boolean isGroupLeader(GroupKey group, BlockPos pos, long tick) {
+        if (tick != groupLeaderTick) {
+            groupLeaderTick = tick;
+            GROUP_LEADERS.clear();
+        }
+        Long leader = GROUP_LEADERS.get(group);
+        if (leader == null) {
+            GROUP_LEADERS.put(group, pos.asLong());
+            return true;
+        }
+        return leader == pos.asLong();
     }
 
     /**
@@ -307,27 +317,10 @@ public final class FramedMapConnections {
         int tileRotation = cached.group() != null
                 ? groupRotation(cached.group()) : cached.singleRotation();
         int light = state.isGlowFrame ? 15728880 : state.lightCoords;
-        long groupId = cached.group() != null ? cached.group().hashCode() : pos.asLong();
-        double distanceSq = camera != null && camera.pos != null
-                ? camera.pos.distanceToSqr(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5)
-                : Double.MAX_VALUE;
-        if (tick != active3DTick) {
-            active3DTick = tick;
-            active3DGroup = Long.MIN_VALUE;
-            active3DLeader = Long.MIN_VALUE;
-            active3DDistance = Double.MAX_VALUE;
-        }
         boolean suppress = cached.suppress3D();
-        if (front && !suppress && distanceSq <= MAX_3D_DISTANCE_SQ
-                && (active3DGroup == Long.MIN_VALUE
-                || (groupId != active3DGroup && distanceSq + 4.0 < active3DDistance))) {
-            active3DGroup = groupId;
-            active3DLeader = pos.asLong();
-            active3DDistance = distanceSq;
-        }
-        boolean active3D = front && !suppress && groupId == active3DGroup;
+        boolean active3D = front && !suppress;
         boolean groupLeader = active3D
-                && (cached.tileDiv() <= 1 || pos.asLong() == active3DLeader);
+                && (cached.tileDiv() <= 1 || isGroupLeader(cached.group(), pos, tick));
         current = new Context(frameMask, textureMask, worldMask,
                 cached.tileDiv(), cached.tileCol(), cached.tileRow(), tileRotation,
                 state.isGlowFrame, light, worldMask != 0, cached.suppress3D(), active3D,
@@ -345,6 +338,7 @@ public final class FramedMapConnections {
         GROUP_INFO.clear();
         POSITION_GROUP.clear();
         SUPPRESS_SCAN.clear();
+        GROUP_LEADERS.clear();
         LOGGED_KEYS.clear();
         RIM_LOGGED.clear();
         FramedMapRenderer.clearDiagnostics();
