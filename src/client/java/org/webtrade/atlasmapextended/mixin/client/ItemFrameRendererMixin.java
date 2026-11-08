@@ -4,6 +4,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.core.Direction;
 import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.block.BlockModelRenderState;
 import net.minecraft.client.renderer.entity.ItemFrameRenderer;
@@ -101,18 +102,24 @@ public class ItemFrameRendererMixin {
         }
         MapItemSavedData data = level.getMapData(state.mapId);
         if (data != null) {
-            if (ModConfig.get().framedMaps3D
-                    && state.direction != null && state.direction.getAxis().isVertical()) {
-                // A floor/ceiling map is drawn 180 degrees from the wall map
-                // the player compares it with. Rotate only vertical frames so
-                // the wall reference stays as it is. The pose is already
-                // translated by -64,-64, so the centre compensation keeps the
-                // map inside its frame.
-                pose.translate(64.0f, 64.0f, 0.0f);
-                pose.mulPose(Axis.ZP.rotationDegrees(180.0f));
-                pose.translate(-64.0f, -64.0f, 0.0f);
-            }
             int tileDiv = FramedMapConnections.currentTileDiv();
+            FramedMapConnections.Context context = FramedMapConnections.context();
+            if (ModConfig.get().framedMaps3D
+                    && tileDiv <= 1
+                    && state.direction == Direction.UP
+                    && context != null && context.worldMask() == 0) {
+                // A lone floor map should read like the held map preview:
+                // rotate its content so the map top points where the player
+                // is looking. The pose is already translated by -64,-64, so
+                // the centre compensation keeps the map inside its frame.
+                int steps = FramedMapConnections.floorFacingRotation(
+                        camera != null ? camera.yRot : 0.0f);
+                if (steps != 0) {
+                    pose.translate(64.0f, 64.0f, 0.0f);
+                    pose.mulPose(Axis.ZP.rotationDegrees(-steps * 90.0f));
+                    pose.translate(-64.0f, -64.0f, 0.0f);
+                }
+            }
             if (tileDiv > 1) {
                 state.mapRenderState.decorations.clear();
             }

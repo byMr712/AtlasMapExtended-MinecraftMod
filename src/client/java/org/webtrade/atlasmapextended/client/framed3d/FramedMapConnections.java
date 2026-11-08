@@ -112,6 +112,16 @@ public final class FramedMapConnections {
         return current == null ? 0 : current.tileRotation();
     }
 
+    /**
+     * Rotation of a floor map whose top should point in the player's
+     * horizontal facing direction, so it reads like the held map preview.
+     * 0 = north, 1 = east, 2 = south, 3 = west.
+     */
+    public static int floorFacingRotation(float yRot) {
+        Direction facing = Direction.fromYRot(yRot);
+        return (facing.get2DDataValue() + 2) & 3;
+    }
+
     /** Rotates an unrotated source pixel into the displayed mega-map image. */
     public static int rotateSourceX(int x, int z, int rotation) {
         return switch (rotation & 3) {
@@ -167,7 +177,7 @@ public final class FramedMapConnections {
         Cached cached = CACHE.get(key);
         if (cached == null || tick - cached.tick() >= CACHE_TICKS) {
             Cached previous = cached;
-            TileInfo tile = computeTile(level, pos, state, data);
+            TileInfo tile = computeTile(level, pos, state, data, camera);
             boolean mega = tile.div() > 1;
             if (mega) {
                 // The whole mega-map has one orientation; a rotation of any
@@ -337,7 +347,7 @@ public final class FramedMapConnections {
      * Rectangles and incomplete groups do not become a mega-map.
      */
     private static TileInfo computeTile(ClientLevel level, BlockPos start, ItemFrameRenderState state,
-                                        MapItemSavedData data) {
+                                        MapItemSavedData data, CameraRenderState camera) {
         TileInfo none = new TileInfo(1, 0, 0, null);
         if (state.mapId == null) {
             return none;
@@ -436,14 +446,16 @@ public final class FramedMapConnections {
             groupState.entities.clear();
             groupState.entities.addAll(currentEntities);
             groupState.last.clear();
-            groupState.rotation = 0;
+            int initialRotation = state.direction == Direction.UP && camera != null
+                    ? floorFacingRotation(camera.yRot) : 0;
+            groupState.rotation = initialRotation;
             for (Map.Entry<BlockPos, ItemFrame> entry : members.entrySet()) {
                 groupState.last.put(entry.getKey().asLong(), entry.getValue().getRotation() & 3);
             }
             // Let every tile pick up the fresh orientation immediately.
             CACHE.clear();
-            FramedMapDebug.log("group formed map={} tile={}x{} members={} rot=0",
-                    state.mapId.id(), cols, cols, members.size());
+            FramedMapDebug.log("group formed map={} tile={}x{} members={} rot={}",
+                    state.mapId.id(), cols, cols, members.size(), initialRotation);
         } else {
             // The same group: a click on any frame rotates the whole picture.
             for (Map.Entry<BlockPos, ItemFrame> entry : members.entrySet()) {
