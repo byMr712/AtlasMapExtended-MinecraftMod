@@ -53,47 +53,48 @@ public final class HeldMapTextures {
     }
 
     public static Identifier get(MapId mapId, MapItemSavedData data) {
-        return get(mapId, data, true, 0, true, 1, 0, 0);
+        return get(mapId, data, true, 0, true, 1, 0, 0, 0);
     }
 
     /** Frame base: with 3D disabled it also gets the 2D snapshot overlay. */
     public static Identifier getFramed(MapId mapId, MapItemSavedData data) {
-        return getFramed(mapId, data, 0, 1, 0, 0);
+        return getFramed(mapId, data, 0, 1, 0, 0, 0);
     }
 
     public static Identifier getFramed(MapId mapId, MapItemSavedData data, int textureMask) {
-        return getFramed(mapId, data, textureMask, 1, 0, 0);
+        return getFramed(mapId, data, textureMask, 1, 0, 0, 0);
     }
 
     public static Identifier getFramed(MapId mapId, MapItemSavedData data, int textureMask,
-                                       int tileDiv, int tileCol, int tileRow) {
+                                       int tileDiv, int tileCol, int tileRow, int tileRotation) {
         // A framed map has no paper margin: its content must reach the edge so
         // neighbouring frames form one picture. A held map keeps the margin.
         return get(mapId, data, !ModConfig.get().framedMaps3D, textureMask, false,
-                tileDiv, tileCol, tileRow);
+                tileDiv, tileCol, tileRow, tileRotation);
     }
 
     private static Identifier get(MapId mapId, MapItemSavedData data, boolean withOverlay,
                                   int textureMask, boolean border,
-                                  int tileDiv, int tileCol, int tileRow) {
+                                  int tileDiv, int tileCol, int tileRow, int tileRotation) {
         if (data.colors == null) {
             return null;
         }
         int id = mapId.id();
         int mask = textureMask & 0x0F;
         int div = Math.max(1, tileDiv);
+        int rotation = div > 1 ? tileRotation & 3 : 0;
         FramedMapOverlay overlay = withOverlay
                 ? overlayFor(mapId, data, data.centerX, data.centerZ) : null;
         long hash = Arrays.hashCode(data.colors) * 31L + (overlay == null ? 0 : 1)
                 + (withOverlay ? 1 : 0) + mask * 17L + (border ? 1 : 0)
-                + div * 131L + tileCol * 31L + tileRow;
+                + div * 131L + tileCol * 31L + tileRow + rotation * 17L;
         String cacheKey = id + (withOverlay ? "h" : "f") + (border ? "b" : "n")
-                + "_" + mask + "_" + div + "_" + tileCol + "_" + tileRow;
+                + "_" + mask + "_" + div + "_" + tileCol + "_" + tileRow + "_" + rotation;
         Entry entry = ENTRIES.get(cacheKey);
         if (entry == null) {
             Identifier textureId = Paper.id((withOverlay ? "held_map/" : "framed_map/")
                     + id + (border ? "b" : "n") + "_" + mask + "_" + div
-                    + "_" + tileCol + "_" + tileRow);
+                    + "_" + tileCol + "_" + tileRow + "_" + rotation);
             DynamicTexture texture = new DynamicTexture(
                     () -> "atlasmap-held-" + id, SIZE, SIZE, false);
             Minecraft.getInstance().getTextureManager().register(textureId, texture);
@@ -103,7 +104,7 @@ public final class HeldMapTextures {
         if (entry.hash != hash) {
             entry.hash = hash;
             paint(entry.texture.getPixels(), data.colors, overlay, data, mask, border,
-                    div, tileCol, tileRow);
+                    div, tileCol, tileRow, rotation);
             entry.texture.upload();
         }
         return entry.id;
@@ -134,7 +135,7 @@ public final class HeldMapTextures {
 
     private static void paint(NativeImage image, byte[] colors, FramedMapOverlay overlay,
                               MapItemSavedData data, int textureMask, boolean border,
-                              int div, int col, int row) {
+                              int div, int col, int row, int rotation) {
         if (div <= 1) {
             paintFull(image, colors, overlay, data, textureMask, border, data.centerX, data.centerZ);
             return;
@@ -146,10 +147,12 @@ public final class HeldMapTextures {
         int z0 = row * SIZE / div;
         int z1 = (row + 1) * SIZE / div;
         for (int y = 0; y < SIZE; y++) {
-            int sy = z0 + y * (z1 - z0) / SIZE;
+            int rz = z0 + y * (z1 - z0) / SIZE;
             for (int x = 0; x < SIZE; x++) {
-                int sx = x0 + x * (x1 - x0) / SIZE;
-                image.setPixelABGR(x, y, full.getPixel(sx, sy));
+                int rx = x0 + x * (x1 - x0) / SIZE;
+                int sx = FramedMapConnections.unrotateDisplayX(rx, rz, rotation);
+                int sz = FramedMapConnections.unrotateDisplayZ(rx, rz, rotation);
+                image.setPixelABGR(x, y, full.getPixel(sx, sz));
             }
         }
         full.close();

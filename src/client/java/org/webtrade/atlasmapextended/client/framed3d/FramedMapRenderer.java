@@ -35,7 +35,7 @@ public final class FramedMapRenderer {
     }
 
     public static void render(ItemFrameRenderState state, PoseStack pose, SubmitNodeCollector collector,
-                              int textureMask, int tileDiv, int tileCol, int tileRow) {
+                              int textureMask, int tileDiv, int tileCol, int tileRow, int tileRotation) {
         if (state.mapId == null) {
             return;
         }
@@ -58,20 +58,21 @@ public final class FramedMapRenderer {
         }
 
         int div = Math.max(1, tileDiv);
+        int rotation = megatileRotation(div, tileRotation);
         FramedMapMesh mesh = FramedMapCache.getOrRequest(
-                level, state.mapId, data, textureMask, div, tileCol, tileRow);
+                level, state.mapId, data, textureMask, div, tileCol, tileRow, rotation);
         if (mesh == null) {
-            logOnce("nomesh:" + state.mapId.id() + ":" + textureMask + ":" + div + ":" + tileCol + ":" + tileRow,
-                    "render map={} mask={} center={},{} tile={}x{} col={} row={} scale={} -> mesh not ready",
+            logOnce("nomesh:" + state.mapId.id() + ":" + textureMask + ":" + div + ":" + tileCol + ":" + tileRow + ":" + rotation,
+                    "render map={} mask={} center={},{} tile={}x{} col={} row={} rot={} scale={} -> mesh not ready",
                     state.mapId.id(), textureMask, data.centerX, data.centerZ,
-                    div, div, tileCol, tileRow, data.scale);
+                    div, div, tileCol, tileRow, rotation, data.scale);
             return;
         }
-        logOnce("mesh:" + state.mapId.id() + ":" + textureMask + ":" + div + ":" + tileCol + ":" + tileRow
+        logOnce("mesh:" + state.mapId.id() + ":" + textureMask + ":" + div + ":" + tileCol + ":" + tileRow + ":" + rotation
                         + ":" + System.identityHashCode(mesh),
-                "render map={} mask={} center={},{} tile={}x{} col={} row={} scale={} glow={} quads={} lines={} icons={}",
+                "render map={} mask={} center={},{} tile={}x{} col={} row={} rot={} scale={} glow={} quads={} lines={} icons={}",
                 state.mapId.id(), textureMask, data.centerX, data.centerZ,
-                div, div, tileCol, tileRow, data.scale,
+                div, div, tileCol, tileRow, rotation, data.scale,
                 state.isGlowFrame, mesh.quadCount(), mesh.lineCount(), mesh.voxelIcons().size());
         long gameTime = level.getGameTime();
         float meshBrightness = state.isGlowFrame ? GLOW_MESH_BRIGHTNESS : 1.0f;
@@ -119,6 +120,10 @@ public final class FramedMapRenderer {
             });
         }
         pose.popPose();
+    }
+
+    private static int megatileRotation(int div, int rotation) {
+        return div > 1 ? rotation & 3 : 0;
     }
 
     private static void logOnce(String key, String message, Object... args) {
