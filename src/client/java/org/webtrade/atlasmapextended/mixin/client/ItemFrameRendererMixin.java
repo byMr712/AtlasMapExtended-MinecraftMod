@@ -145,7 +145,8 @@ public class ItemFrameRendererMixin {
             CameraRenderState camera,
             CallbackInfo ci
     ) {
-        if (FramedMapConnections.currentSuppress3D()) {
+        if (FramedMapConnections.currentSuppress3D()
+                || !FramedMapConnections.currentActive3D()) {
             return;
         }
         FramedMapRenderer.render(
