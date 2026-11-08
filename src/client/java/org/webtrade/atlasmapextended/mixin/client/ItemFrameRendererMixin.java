@@ -100,8 +100,14 @@ public class ItemFrameRendererMixin {
         }
         MapItemSavedData data = level.getMapData(state.mapId);
         if (data != null) {
+            int tileX = FramedMapConnections.currentTileCenterX();
+            int tileZ = FramedMapConnections.currentTileCenterZ();
+            if (tileX != Integer.MIN_VALUE && (tileX != data.centerX || tileZ != data.centerZ)) {
+                state.mapRenderState.decorations.clear();
+            }
             var texture = HeldMapTextures.getFramed(
-                    state.mapId, data, FramedMapConnections.currentTextureMask());
+                    state.mapId, data, FramedMapConnections.currentTextureMask(),
+                    tileX, tileZ);
             if (texture != null) {
                 state.mapRenderState.texture = texture;
             }
@@ -121,6 +127,8 @@ public class ItemFrameRendererMixin {
             CallbackInfo ci
     ) {
         FramedMapRenderer.render(
-                state, pose, collector, FramedMapConnections.currentTextureMask());
+                state, pose, collector, FramedMapConnections.currentTextureMask(),
+                FramedMapConnections.currentTileCenterX(),
+                FramedMapConnections.currentTileCenterZ());
     }
 }

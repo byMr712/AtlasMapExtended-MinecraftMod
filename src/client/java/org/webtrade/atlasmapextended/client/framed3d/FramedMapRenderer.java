@@ -35,7 +35,7 @@ public final class FramedMapRenderer {
     }
 
     public static void render(ItemFrameRenderState state, PoseStack pose, SubmitNodeCollector collector,
-                              int textureMask) {
+                              int textureMask, int tileCenterX, int tileCenterZ) {
         if (state.mapId == null) {
             return;
         }
@@ -57,16 +57,22 @@ public final class FramedMapRenderer {
             return;
         }
 
-        FramedMapMesh mesh = FramedMapCache.getOrRequest(level, state.mapId, data, textureMask);
+        int tileX = tileCenterX == Integer.MIN_VALUE ? data.centerX : tileCenterX;
+        int tileZ = tileCenterZ == Integer.MIN_VALUE ? data.centerZ : tileCenterZ;
+        FramedMapMesh mesh = FramedMapCache.getOrRequest(
+                level, state.mapId, data, textureMask, tileX, tileZ);
         if (mesh == null) {
-            logOnce("nomesh:" + state.mapId.id() + ":" + textureMask,
-                    "render map={} mask={} center={},{} scale={} -> mesh not ready",
-                    state.mapId.id(), textureMask, data.centerX, data.centerZ, data.scale);
+            logOnce("nomesh:" + state.mapId.id() + ":" + textureMask + ":" + tileX + ":" + tileZ,
+                    "render map={} mask={} center={},{} tile={},{} scale={} -> mesh not ready",
+                    state.mapId.id(), textureMask, data.centerX, data.centerZ,
+                    tileX, tileZ, data.scale);
             return;
         }
-        logOnce("mesh:" + state.mapId.id() + ":" + textureMask + ":" + System.identityHashCode(mesh),
-                "render map={} mask={} center={},{} scale={} glow={} quads={} lines={} icons={}",
-                state.mapId.id(), textureMask, data.centerX, data.centerZ, data.scale,
+        logOnce("mesh:" + state.mapId.id() + ":" + textureMask + ":" + tileX + ":" + tileZ
+                        + ":" + System.identityHashCode(mesh),
+                "render map={} mask={} center={},{} tile={},{} scale={} glow={} quads={} lines={} icons={}",
+                state.mapId.id(), textureMask, data.centerX, data.centerZ,
+                tileX, tileZ, data.scale,
                 state.isGlowFrame, mesh.quadCount(), mesh.lineCount(), mesh.voxelIcons().size());
         long gameTime = level.getGameTime();
         float meshBrightness = state.isGlowFrame ? GLOW_MESH_BRIGHTNESS : 1.0f;

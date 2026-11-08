@@ -61,17 +61,18 @@ public final class FramedMapCache {
 
     /** Called from the item frame renderer. Returns null until the mesh is ready. */
     public static FramedMapMesh getOrRequest(ClientLevel level, MapId mapId, MapItemSavedData data,
-                                             int textureMask) {
+                                             int textureMask, int tileCenterX, int tileCenterZ) {
         if (!ModConfig.get().framedMaps3D || data.colors == null) {
             return null;
         }
 
         FramedMapKey key = new FramedMapKey(
                 data.dimension, mapId.id(),
-                data.centerX, data.centerZ, data.scale,
+                tileCenterX, tileCenterZ, data.scale,
                 level.getMinY(), level.getHeight());
         int mask = textureMask & 0x0F;
-        String id = key.dimension().identifier() + "#" + key.mapId() + "#" + mask;
+        String id = key.dimension().identifier() + "#" + key.mapId() + "#" + mask
+                + "@" + tileCenterX + "," + tileCenterZ;
         long hash = Arrays.hashCode(data.colors);
 
         Entry entry = ENTRIES.get(id);
@@ -83,12 +84,14 @@ public final class FramedMapCache {
                 entry.volume = stored;
                 entry.exploredHash = hash;
                 entry.builtHash = hash;
-                FramedMapDebug.log("cache map={} mask={} center={},{} scale={} loaded stored volume, valid={}",
-                        mapId.id(), mask, data.centerX, data.centerZ, data.scale, validCount(entry.volume));
+                FramedMapDebug.log("cache map={} mask={} center={},{} tile={},{} scale={} loaded stored volume, valid={}",
+                        mapId.id(), mask, data.centerX, data.centerZ,
+                        tileCenterX, tileCenterZ, data.scale, validCount(entry.volume));
                 startBuild(entry);
             } else {
-                FramedMapDebug.log("cache map={} mask={} center={},{} scale={} start sampling",
-                        mapId.id(), mask, data.centerX, data.centerZ, data.scale);
+                FramedMapDebug.log("cache map={} mask={} center={},{} tile={},{} scale={} start sampling",
+                        mapId.id(), mask, data.centerX, data.centerZ,
+                        tileCenterX, tileCenterZ, data.scale);
                 startSampling(entry, hash);
             }
             ENTRIES.put(id, entry);
@@ -116,7 +119,7 @@ public final class FramedMapCache {
         if (!ModConfig.get().framedMaps3D || data.colors == null) {
             return;
         }
-        getOrRequest(level, mapId, data, 0);
+        getOrRequest(level, mapId, data, 0, data.centerX, data.centerZ);
     }
 
     private static void startSampling(Entry entry, long hash) {
