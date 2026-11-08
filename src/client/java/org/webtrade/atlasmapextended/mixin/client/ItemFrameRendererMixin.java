@@ -108,12 +108,11 @@ public class ItemFrameRendererMixin {
                     && tileDiv <= 1
                     && state.direction == Direction.UP
                     && context != null && context.worldMask() == 0) {
-                // A lone floor map should read like the held map preview:
-                // rotate its content so the map top points where the player
-                // is looking. The pose is already translated by -64,-64, so
-                // the centre compensation keeps the map inside its frame.
-                int steps = FramedMapConnections.floorFacingRotation(
-                        camera != null ? camera.yRot : 0.0f);
+                // A lone floor map keeps the orientation chosen when it was
+                // placed, so walking around it does not spin the picture.
+                // The pose is already translated by -64,-64, so the centre
+                // compensation keeps the map inside its frame.
+                int steps = FramedMapConnections.currentTileRotation();
                 if (steps != 0) {
                     pose.translate(64.0f, 64.0f, 0.0f);
                     pose.mulPose(Axis.ZP.rotationDegrees(-steps * 90.0f));
