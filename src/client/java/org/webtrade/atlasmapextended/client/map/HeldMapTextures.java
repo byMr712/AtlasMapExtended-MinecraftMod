@@ -18,6 +18,7 @@ import org.webtrade.atlasmapextended.client.framed3d.FramedOverlayStorage;
 import org.webtrade.atlasmapextended.client.gui.Paper;
 
 import java.io.InputStream;
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
@@ -37,6 +38,10 @@ public final class HeldMapTextures {
 
     private static final Map<String, Entry> ENTRIES = new HashMap<>();
     private static final Map<String, NativeImage> ICONS = new HashMap<>();
+    /** One unrotated full map image shared by all tiles of a mega-map. */
+    private static final Map<String, NativeImage> FULL = new HashMap<>();
+    /** The same full image pre-rotated once per orientation. */
+    private static final Map<String, NativeImage> FULL_ROTATED = new HashMap<>();
 
     private HeldMapTextures() {
     }
@@ -45,6 +50,7 @@ public final class HeldMapTextures {
         final Identifier id;
         final DynamicTexture texture;
         long hash = Long.MIN_VALUE;
+        long lastHashCheck;
 
         Entry(Identifier id, DynamicTexture texture) {
             this.id = id;
@@ -83,11 +89,6 @@ public final class HeldMapTextures {
         int mask = textureMask & 0x0F;
         int div = Math.max(1, tileDiv);
         int rotation = div > 1 ? tileRotation & 3 : 0;
-        FramedMapOverlay overlay = withOverlay
-                ? overlayFor(mapId, data, data.centerX, data.centerZ) : null;
-        long hash = Arrays.hashCode(data.colors) * 31L + (overlay == null ? 0 : 1)
-                + (withOverlay ? 1 : 0) + mask * 17L + (border ? 1 : 0)
-                + div * 131L + tileCol * 31L + tileRow + rotation * 17L;
         String cacheKey = id + (withOverlay ? "h" : "f") + (border ? "b" : "n")
                 + "_" + mask + "_" + div + "_" + tileCol + "_" + tileRow + "_" + rotation;
         Entry entry = ENTRIES.get(cacheKey);
@@ -101,11 +102,22 @@ public final class HeldMapTextures {
             entry = new Entry(textureId, texture);
             ENTRIES.put(cacheKey, entry);
         }
-        if (entry.hash != hash) {
-            entry.hash = hash;
-            paint(entry.texture.getPixels(), data.colors, overlay, data, mask, border,
-                    div, tileCol, tileRow, rotation);
-            entry.texture.upload();
+        long now = Minecraft.getInstance().level != null
+                ? Minecraft.getInstance().level.getGameTime() : 0L;
+        if (entry.hash == Long.MIN_VALUE || now - entry.lastHashCheck >= 20) {
+            entry.lastHashCheck = now;
+            FramedMapOverlay overlay = withOverlay
+                    ? overlayFor(mapId, data, data.centerX, data.centerZ) : null;
+            int colorsHash = Arrays.hashCode(data.colors);
+            long hash = colorsHash * 31L + (overlay == null ? 0 : 1)
+                    + (withOverlay ? 1 : 0) + mask * 17L + (border ? 1 : 0)
+                    + div * 131L + tileCol * 31L + tileRow + rotation * 17L;
+            if (entry.hash != hash) {
+                entry.hash = hash;
+                paint(entry.texture.getPixels(), data.colors, colorsHash, overlay, data, mask, border,
+                        div, tileCol, tileRow, rotation);
+                entry.texture.upload();
+            }
         }
         return entry.id;
     }
@@ -133,29 +145,54 @@ public final class HeldMapTextures {
         return FramedOverlayStorage.getOrCapture(key);
     }
 
-    private static void paint(NativeImage image, byte[] colors, FramedMapOverlay overlay,
+    private static void paint(NativeImage image, byte[] colors, int colorsHash, FramedMapOverlay overlay,
                               MapItemSavedData data, int textureMask, boolean border,
                               int div, int col, int row, int rotation) {
         if (div <= 1) {
             paintFull(image, colors, overlay, data, textureMask, border, data.centerX, data.centerZ);
             return;
         }
-        NativeImage full = new NativeImage(SIZE, SIZE, false);
-        paintFull(full, colors, overlay, data, 0, false, data.centerX, data.centerZ);
+        String fullKey = data.centerX + ":" + data.centerZ + ":" + data.scale + ":"
+                + colorsHash + ":" + (overlay == null ? 0 : System.identityHashCode(overlay));
+        NativeImage full = FULL.get(fullKey);
+        if (full == null) {
+            full = new NativeImage(SIZE, SIZE, false);
+            paintFull(full, colors, overlay, data, 0, false, data.centerX, data.centerZ);
+            FULL.put(fullKey, full);
+        }
         int x0 = col * SIZE / div;
         int x1 = (col + 1) * SIZE / div;
         int z0 = row * SIZE / div;
         int z1 = (row + 1) * SIZE / div;
-        for (int y = 0; y < SIZE; y++) {
-            int rz = z0 + y * (z1 - z0) / SIZE;
-            for (int x = 0; x < SIZE; x++) {
-                int rx = x0 + x * (x1 - x0) / SIZE;
-                int sx = FramedMapConnections.unrotateDisplayX(rx, rz, rotation);
-                int sz = FramedMapConnections.unrotateDisplayZ(rx, rz, rotation);
-                image.setPixelABGR(x, y, full.getPixel(sx, sz));
+        NativeImage source = full;
+        if (rotation != 0) {
+            String rotatedKey = fullKey + "#" + rotation;
+            source = FULL_ROTATED.get(rotatedKey);
+            if (source == null) {
+                source = new NativeImage(SIZE, SIZE, false);
+                for (int y = 0; y < SIZE; y++) {
+                    for (int x = 0; x < SIZE; x++) {
+                        int sx = FramedMapConnections.unrotateDisplayX(x, y, rotation);
+                        int sz = FramedMapConnections.unrotateDisplayZ(x, y, rotation);
+                        source.setPixelABGR(x, y, full.getPixel(sx, sz));
+                    }
+                }
+                FULL_ROTATED.put(rotatedKey, source);
             }
         }
-        full.close();
+        ByteBuffer srcBytes = source.getPixelBytes();
+        ByteBuffer dstBytes = image.getPixelBytes();
+        int sxSpan = x1 - x0;
+        int szSpan = z1 - z0;
+        for (int y = 0; y < SIZE; y++) {
+            int rz = z0 + y * szSpan / SIZE;
+            int srcRow = rz * SIZE;
+            int dstRow = y * SIZE;
+            for (int x = 0; x < SIZE; x++) {
+                int rx = x0 + x * sxSpan / SIZE;
+                dstBytes.putInt((dstRow + x) * 4, srcBytes.getInt((srcRow + rx) * 4));
+            }
+        }
     }
 
     private static void paintFull(NativeImage image, byte[] colors, FramedMapOverlay overlay,
@@ -361,6 +398,14 @@ public final class HeldMapTextures {
             mc.getTextureManager().release(entry.id);
         }
         ENTRIES.clear();
+        for (NativeImage image : FULL.values()) {
+            image.close();
+        }
+        FULL.clear();
+        for (NativeImage image : FULL_ROTATED.values()) {
+            image.close();
+        }
+        FULL_ROTATED.clear();
         for (NativeImage image : ICONS.values()) {
             if (image != null) {
                 image.close();

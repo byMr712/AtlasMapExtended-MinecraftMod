@@ -3,6 +3,7 @@ package org.webtrade.atlasmapextended.mixin.client;
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.core.Direction;
 import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.block.BlockModelRenderState;
 import net.minecraft.client.renderer.entity.ItemFrameRenderer;
@@ -14,6 +15,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.joml.Matrix4f;
 import org.webtrade.atlasmapextended.client.data.ModConfig;
 import org.webtrade.atlasmapextended.client.framed3d.FramedMapConnections;
 import org.webtrade.atlasmapextended.client.framed3d.FramedMapRenderer;
@@ -101,6 +103,20 @@ public class ItemFrameRendererMixin {
         MapItemSavedData data = level.getMapData(state.mapId);
         if (data != null) {
             int tileDiv = FramedMapConnections.currentTileDiv();
+            if (ModConfig.get().framedMaps3D
+                    && tileDiv <= 1
+                    && state.direction == Direction.UP) {
+                // A lone floor map keeps the orientation chosen when it was
+                // placed, so walking around it does not spin the picture.
+                // The pose is already translated by -64,-64, so the centre
+                // compensation keeps the map inside its frame.
+                int steps = FramedMapConnections.currentTileRotation();
+                if (steps != 0) {
+                    pose.translate(64.0f, 64.0f, 0.0f);
+                    pose.mulPose(new Matrix4f().rotationZ((float) Math.toRadians(-steps * 90.0f)));
+                    pose.translate(-64.0f, -64.0f, 0.0f);
+                }
+            }
             if (tileDiv > 1) {
                 state.mapRenderState.decorations.clear();
             }
