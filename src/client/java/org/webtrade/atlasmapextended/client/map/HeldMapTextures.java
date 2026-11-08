@@ -15,6 +15,7 @@ import org.webtrade.atlasmapextended.client.framed3d.FramedMapConnections;
 import org.webtrade.atlasmapextended.client.framed3d.FramedMapKey;
 import org.webtrade.atlasmapextended.client.framed3d.FramedMapOverlay;
 import org.webtrade.atlasmapextended.client.framed3d.FramedOverlayStorage;
+import org.webtrade.atlasmapextended.client.framed3d.FramedMapMesh;
 import org.webtrade.atlasmapextended.client.gui.Paper;
 
 import java.io.InputStream;
@@ -59,29 +60,34 @@ public final class HeldMapTextures {
     }
 
     public static Identifier get(MapId mapId, MapItemSavedData data) {
-        return get(mapId, data, true, 0, true, 1, 0, 0, 0);
+        return get(mapId, data, true, 0, true, 1, 0, 0, 0, false);
     }
 
     /** Frame base: with 3D disabled it also gets the 2D snapshot overlay. */
     public static Identifier getFramed(MapId mapId, MapItemSavedData data) {
-        return getFramed(mapId, data, 0, 1, 0, 0, 0);
+        return getFramed(mapId, data, 0, 1, 0, 0, 0, false, !ModConfig.get().framedMaps3D);
     }
 
     public static Identifier getFramed(MapId mapId, MapItemSavedData data, int textureMask) {
-        return getFramed(mapId, data, textureMask, 1, 0, 0, 0);
+        return getFramed(mapId, data, textureMask, 1, 0, 0, 0, false, !ModConfig.get().framedMaps3D);
     }
 
     public static Identifier getFramed(MapId mapId, MapItemSavedData data, int textureMask,
                                        int tileDiv, int tileCol, int tileRow, int tileRotation) {
-        // A framed map has no paper margin: its content must reach the edge so
-        // neighbouring frames form one picture. A held map keeps the margin.
-        return get(mapId, data, !ModConfig.get().framedMaps3D, textureMask, false,
-                tileDiv, tileCol, tileRow, tileRotation);
+        return getFramed(mapId, data, textureMask, tileDiv, tileCol, tileRow, tileRotation, false, !ModConfig.get().framedMaps3D);
+    }
+
+    public static Identifier getFramed(MapId mapId, MapItemSavedData data, int textureMask,
+                                       int tileDiv, int tileCol, int tileRow, int tileRotation,
+                                       boolean glow, boolean withOverlay) {
+        return get(mapId, data, withOverlay, textureMask, false,
+                tileDiv, tileCol, tileRow, tileRotation, glow);
     }
 
     private static Identifier get(MapId mapId, MapItemSavedData data, boolean withOverlay,
                                   int textureMask, boolean border,
-                                  int tileDiv, int tileCol, int tileRow, int tileRotation) {
+                                  int tileDiv, int tileCol, int tileRow, int tileRotation,
+                                  boolean glow) {
         if (data.colors == null) {
             return null;
         }
@@ -89,12 +95,12 @@ public final class HeldMapTextures {
         int mask = textureMask & 0x0F;
         int div = Math.max(1, tileDiv);
         int rotation = div > 1 ? tileRotation & 3 : 0;
-        String cacheKey = id + (withOverlay ? "h" : "f") + (border ? "b" : "n")
+        String cacheKey = id + (withOverlay ? "h" : "f") + (border ? "b" : "n") + (glow ? "g" : "")
                 + "_" + mask + "_" + div + "_" + tileCol + "_" + tileRow + "_" + rotation;
         Entry entry = ENTRIES.get(cacheKey);
         if (entry == null) {
             Identifier textureId = Paper.id((withOverlay ? "held_map/" : "framed_map/")
-                    + id + (border ? "b" : "n") + "_" + mask + "_" + div
+                    + id + (border ? "b" : "n") + (glow ? "g" : "") + "_" + mask + "_" + div
                     + "_" + tileCol + "_" + tileRow + "_" + rotation);
             DynamicTexture texture = new DynamicTexture(
                     () -> "atlasmap-held-" + id, SIZE, SIZE, false);
@@ -116,12 +122,12 @@ public final class HeldMapTextures {
             long hash = colorsHash * 31L
                     + data.centerX * 131L + data.centerZ * 17L + data.scale * 7L
                     + overlayHash
-                    + (withOverlay ? 1 : 0) + mask * 17L + (border ? 1 : 0)
+                    + (withOverlay ? 1 : 0) + mask * 17L + (border ? 1 : 0) + (glow ? 19L : 0)
                     + div * 131L + tileCol * 31L + tileRow + rotation * 17L;
             if (entry.hash != hash) {
                 entry.hash = hash;
                 paint(entry.texture.getPixels(), data.colors, colorsHash, overlay, data, mask, border,
-                        div, tileCol, tileRow, rotation);
+                        div, tileCol, tileRow, rotation, glow);
                 entry.texture.upload();
             }
         }
@@ -153,17 +159,18 @@ public final class HeldMapTextures {
 
     private static void paint(NativeImage image, byte[] colors, int colorsHash, FramedMapOverlay overlay,
                               MapItemSavedData data, int textureMask, boolean border,
-                              int div, int col, int row, int rotation) {
+                              int div, int col, int row, int rotation, boolean glow) {
         if (div <= 1) {
-            paintFull(image, colors, overlay, data, textureMask, border, data.centerX, data.centerZ);
+            paintFull(image, colors, overlay, data, textureMask, border, data.centerX, data.centerZ, glow);
             return;
         }
         String fullKey = data.centerX + ":" + data.centerZ + ":" + data.scale + ":"
-                + colorsHash + ":" + (overlay == null ? 0 : System.identityHashCode(overlay));
+                + colorsHash + ":" + (overlay == null ? 0 : System.identityHashCode(overlay))
+                + ":" + (glow ? "g" : "n");
         NativeImage full = FULL.get(fullKey);
         if (full == null) {
             full = new NativeImage(SIZE, SIZE, false);
-            paintFull(full, colors, overlay, data, 0, false, data.centerX, data.centerZ);
+            paintFull(full, colors, overlay, data, 0, false, data.centerX, data.centerZ, glow);
             FULL.put(fullKey, full);
         }
         int x0 = col * SIZE / div;
@@ -203,7 +210,7 @@ public final class HeldMapTextures {
 
     private static void paintFull(NativeImage image, byte[] colors, FramedMapOverlay overlay,
                                   MapItemSavedData data, int textureMask, boolean border,
-                                  int centerX, int centerZ) {
+                                  int centerX, int centerZ, boolean glow) {
         // Prefer the mod's own tiles: they already carry the height shading and
         // water-depth palette used by the minimap and the world map.
         MapSession session = MapManager.live();
@@ -239,12 +246,15 @@ public final class HeldMapTextures {
                         argb = ChunkScanner.papyrus(color.col, 0, 0, 0, waterDepth, wx, wz);
                     }
                 }
+                if (glow) {
+                    argb = FramedMapMesh.brighten(argb, 1.45f);
+                }
                 image.setPixelABGR(x, y, abgr(argb));
             }
         }
 
         if (overlay != null) {
-            paintOverlay(image, overlay);
+            paintOverlay(image, overlay, glow);
         }
 
         if (!border) {
@@ -263,36 +273,43 @@ public final class HeldMapTextures {
                 if (left || right || top || bottom) {
                     boolean line = (left && x == 1) || (right && x == SIZE - 2)
                             || (top && y == 1) || (bottom && y == SIZE - 2);
-                    image.setPixelABGR(x, y, abgr(line ? INK : PAPER));
+                    int c = line ? INK : PAPER;
+                    if (glow) {
+                        c = FramedMapMesh.brighten(c, 1.45f);
+                    }
+                    image.setPixelABGR(x, y, abgr(c));
                 }
             }
         }
     }
 
-    private static void paintOverlay(NativeImage image, FramedMapOverlay overlay) {
+    private static void paintOverlay(NativeImage image, FramedMapOverlay overlay, boolean glow) {
         int scaleFactor = 1 << overlay.scale;
+        float factor = glow ? 1.45f : 1.0f;
         for (Region region : overlay.regions) {
+            int color = glow ? FramedMapMesh.brighten(region.color, factor) : region.color;
             double[] pts = region.pts;
             for (int i = 0; i + 3 < pts.length; i += 2) {
                 line(image, px(overlay, scaleFactor, pts[i]), pz(overlay, scaleFactor, pts[i + 1]),
-                        px(overlay, scaleFactor, pts[i + 2]), pz(overlay, scaleFactor, pts[i + 3]), 1, region.color);
+                        px(overlay, scaleFactor, pts[i + 2]), pz(overlay, scaleFactor, pts[i + 3]), 1, color);
             }
             if (pts.length >= 4) {
                 line(image, px(overlay, scaleFactor, pts[pts.length - 2]), pz(overlay, scaleFactor, pts[pts.length - 1]),
-                        px(overlay, scaleFactor, pts[0]), pz(overlay, scaleFactor, pts[1]), 1, region.color);
+                        px(overlay, scaleFactor, pts[0]), pz(overlay, scaleFactor, pts[1]), 1, color);
             }
         }
 
         for (Stroke stroke : overlay.strokes) {
             int width = Math.max(1, Math.min(3, Math.round(stroke.width * 0.6f)));
+            int color = glow ? FramedMapMesh.brighten(stroke.color, factor) : stroke.color;
             for (int i = 0; i + 3 < stroke.pts.length; i += 2) {
                 line(image, px(overlay, scaleFactor, stroke.pts[i]), pz(overlay, scaleFactor, stroke.pts[i + 1]),
-                        px(overlay, scaleFactor, stroke.pts[i + 2]), pz(overlay, scaleFactor, stroke.pts[i + 3]), width, stroke.color);
+                        px(overlay, scaleFactor, stroke.pts[i + 2]), pz(overlay, scaleFactor, stroke.pts[i + 3]), width, color);
             }
         }
 
         for (Marker marker : overlay.markers) {
-            drawMarker(image, px(overlay, scaleFactor, marker.x), pz(overlay, scaleFactor, marker.z), marker);
+            drawMarker(image, px(overlay, scaleFactor, marker.x), pz(overlay, scaleFactor, marker.z), marker, glow);
         }
     }
 
@@ -330,10 +347,13 @@ public final class HeldMapTextures {
         }
     }
 
-    private static void drawMarker(NativeImage image, int cx, int cy, Marker marker) {
+    private static void drawMarker(NativeImage image, int cx, int cy, Marker marker, boolean glow) {
         String icon = marker.icon == null || marker.icon.isBlank() ? "pin" : marker.icon;
         NativeImage source = icon(icon, marker.color != 0);
         int tint = marker.color == 0 ? 0xFFFFFFFF : marker.color;
+        if (glow) {
+            tint = FramedMapMesh.brighten(tint, 1.5f);
+        }
 
         int ox = cx - MARKER_SIZE / 2;
         int oy = cy - MARKER_SIZE / 2;
@@ -357,6 +377,10 @@ public final class HeldMapTextures {
                     r = r * ((tint >> 16) & 0xFF) / 255;
                     g = g * ((tint >> 8) & 0xFF) / 255;
                     b = b * (tint & 0xFF) / 255;
+                } else if (glow) {
+                    r = Math.min(255, Math.round(r * 1.5f));
+                    g = Math.min(255, Math.round(g * 1.5f));
+                    b = Math.min(255, Math.round(b * 1.5f));
                 }
                 int px = ox + x;
                 int py = oy + y;

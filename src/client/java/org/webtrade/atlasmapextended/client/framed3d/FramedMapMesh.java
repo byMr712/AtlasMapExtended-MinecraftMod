@@ -101,7 +101,7 @@ public final class FramedMapMesh {
     }
 
     /** Raises the RGB channels while keeping alpha untouched. */
-    static int brighten(int argb, float factor) {
+    public static int brighten(int argb, float factor) {
         if (factor <= 1.0f) {
             return argb;
         }
