@@ -141,35 +141,56 @@ public final class FramedMapMesher {
         List<Line> lines = new ArrayList<>();
         List<FramedMapMesh.VoxelIcon> icons = new ArrayList<>();
 
-        // top faces, merged horizontally while colour and depth match
+        // top faces, greedily merged into colour/depth rectangles
+        boolean[] used = new boolean[FramedMapVolume.COLUMNS];
         for (int pz = 0; pz < FramedMapVolume.SIZE; pz++) {
-            int px = 0;
-            while (px < FramedMapVolume.SIZE) {
+            for (int px = 0; px < FramedMapVolume.SIZE; px++) {
                 int index = pz * FramedMapVolume.SIZE + px;
+                if (used[index]) {
+                    continue;
+                }
                 float d = depth[index];
                 if (d <= 0) {
-                    px++;
+                    used[index] = true;
                     continue;
                 }
                 int color = colors[index];
-                int run = 1;
-                while (px + run < FramedMapVolume.SIZE) {
-                    int next = pz * FramedMapVolume.SIZE + px + run;
-                    if (depth[next] != d || colors[next] != color) {
+                int width = 1;
+                while (px + width < FramedMapVolume.SIZE) {
+                    int next = index + width;
+                    if (used[next] || depth[next] != d || colors[next] != color) {
                         break;
                     }
-                    run++;
+                    width++;
+                }
+                int height = 1;
+                outer:
+                while (pz + height < FramedMapVolume.SIZE) {
+                    int row = (pz + height) * FramedMapVolume.SIZE + px;
+                    for (int x = 0; x < width; x++) {
+                        int next = row + x;
+                        if (used[next] || depth[next] != d || colors[next] != color) {
+                            break outer;
+                        }
+                    }
+                    height++;
+                }
+                for (int z = 0; z < height; z++) {
+                    int row = (pz + z) * FramedMapVolume.SIZE + px;
+                    for (int x = 0; x < width; x++) {
+                        used[row + x] = true;
+                    }
                 }
                 float x0 = px == 0 && (textureMask & FramedMapConnections.TEX_LEFT) != 0
                         ? -SEAM_OVERLAP : px;
-                float x1 = px + run == FramedMapVolume.SIZE
+                float x1 = px + width == FramedMapVolume.SIZE
                         && (textureMask & FramedMapConnections.TEX_RIGHT) != 0
-                        ? FramedMapVolume.SIZE + SEAM_OVERLAP : px + run;
+                        ? FramedMapVolume.SIZE + SEAM_OVERLAP : px + width;
                 float z0 = pz == 0 && (textureMask & FramedMapConnections.TEX_TOP) != 0
                         ? -SEAM_OVERLAP : pz;
-                float z1 = pz + 1 == FramedMapVolume.SIZE
+                float z1 = pz + height == FramedMapVolume.SIZE
                         && (textureMask & FramedMapConnections.TEX_BOTTOM) != 0
-                        ? FramedMapVolume.SIZE + SEAM_OVERLAP : pz + 1;
+                        ? FramedMapVolume.SIZE + SEAM_OVERLAP : pz + height;
                 quads.add(new Quad(
                         x0, z0, d,
                         x0, z1, d,
@@ -179,7 +200,6 @@ public final class FramedMapMesher {
                 if (quads.size() >= MAX_QUADS) {
                     return finish(quads, lines, icons);
                 }
-                px += run;
             }
         }
 
@@ -272,10 +292,20 @@ public final class FramedMapMesher {
     private static void addWallEast(List<Quad> quads, FramedMapVolume volume, int index, int scaleFactor,
                                     int wx, int wz, float x, float z, float from, float to, int surfaceColor,
                                     int div) {
-        for (float a = from; a < to; ) {
+        float a = from;
+        while (a < to) {
             float b = Math.min(to, a + div);
             int color = wallColor(volume, index, scaleFactor, wx, wz, to, (a + b) * 0.5f,
                     surfaceColor, SIDE_SHADE, div);
+            while (b < to) {
+                float c = Math.min(to, b + div);
+                int next = wallColor(volume, index, scaleFactor, wx, wz, to, (b + c) * 0.5f,
+                        surfaceColor, SIDE_SHADE, div);
+                if (next != color) {
+                    break;
+                }
+                b = c;
+            }
             quads.add(new Quad(x, z, a, x, z + 1, a, x, z + 1, b, x, z, b, color));
             a = b;
         }
@@ -284,10 +314,20 @@ public final class FramedMapMesher {
     private static void addWallWest(List<Quad> quads, FramedMapVolume volume, int index, int scaleFactor,
                                     int wx, int wz, float x, float z, float from, float to, int surfaceColor,
                                     int div) {
-        for (float a = from; a < to; ) {
+        float a = from;
+        while (a < to) {
             float b = Math.min(to, a + div);
             int color = wallColor(volume, index, scaleFactor, wx, wz, to, (a + b) * 0.5f,
                     surfaceColor, SIDE_SHADE, div);
+            while (b < to) {
+                float c = Math.min(to, b + div);
+                int next = wallColor(volume, index, scaleFactor, wx, wz, to, (b + c) * 0.5f,
+                        surfaceColor, SIDE_SHADE, div);
+                if (next != color) {
+                    break;
+                }
+                b = c;
+            }
             quads.add(new Quad(x, z + 1, a, x, z, a, x, z, b, x, z + 1, b, color));
             a = b;
         }
@@ -296,10 +336,20 @@ public final class FramedMapMesher {
     private static void addWallSouth(List<Quad> quads, FramedMapVolume volume, int index, int scaleFactor,
                                      int wx, int wz, float x, float z, float from, float to, int surfaceColor,
                                      int div) {
-        for (float a = from; a < to; ) {
+        float a = from;
+        while (a < to) {
             float b = Math.min(to, a + div);
             int color = wallColor(volume, index, scaleFactor, wx, wz, to, (a + b) * 0.5f,
                     surfaceColor, EDGE_SHADE, div);
+            while (b < to) {
+                float c = Math.min(to, b + div);
+                int next = wallColor(volume, index, scaleFactor, wx, wz, to, (b + c) * 0.5f,
+                        surfaceColor, EDGE_SHADE, div);
+                if (next != color) {
+                    break;
+                }
+                b = c;
+            }
             quads.add(new Quad(x + 1, z, a, x, z, a, x, z, b, x + 1, z, b, color));
             a = b;
         }
@@ -308,10 +358,20 @@ public final class FramedMapMesher {
     private static void addWallNorth(List<Quad> quads, FramedMapVolume volume, int index, int scaleFactor,
                                      int wx, int wz, float x, float z, float from, float to, int surfaceColor,
                                      int div) {
-        for (float a = from; a < to; ) {
+        float a = from;
+        while (a < to) {
             float b = Math.min(to, a + div);
             int color = wallColor(volume, index, scaleFactor, wx, wz, to, (a + b) * 0.5f,
                     surfaceColor, EDGE_SHADE, div);
+            while (b < to) {
+                float c = Math.min(to, b + div);
+                int next = wallColor(volume, index, scaleFactor, wx, wz, to, (b + c) * 0.5f,
+                        surfaceColor, EDGE_SHADE, div);
+                if (next != color) {
+                    break;
+                }
+                b = c;
+            }
             quads.add(new Quad(x, z, a, x + 1, z, a, x + 1, z, b, x, z, b, color));
             a = b;
         }
