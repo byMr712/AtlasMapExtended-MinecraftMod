@@ -511,8 +511,8 @@ public final class FramedMapConnections {
                     for (long member : old.members) {
                         POSITION_GROUP.remove(member, stale);
                     }
+                    invalidate(old.members);
                 }
-                CACHE.clear();
             }
             return none;
         }
@@ -529,6 +529,10 @@ public final class FramedMapConnections {
         Set<Integer> currentEntities = new HashSet<>();
         for (ItemFrame frame : members.values()) {
             currentEntities.add(frame.getId());
+        }
+        Set<Long> currentMembers = new HashSet<>();
+        for (BlockPos member : members.keySet()) {
+            currentMembers.add(member.asLong());
         }
         double centerX = 0.0;
         double centerZ = 0.0;
@@ -564,7 +568,7 @@ public final class FramedMapConnections {
                 groupState.last.put(entry.getKey().asLong(), entry.getValue().getRotation() & 3);
             }
             // Let every tile pick up the fresh orientation immediately.
-            CACHE.clear();
+            invalidate(currentMembers);
             FramedMapDebug.log("group formed map={} tile={}x{} members={} rot={}",
                     state.mapId.id(), cols, cols, members.size(), initialRotation);
         } else {
@@ -582,10 +586,6 @@ public final class FramedMapConnections {
                             state.mapId.id(), cols, cols, entry.getKey(), groupState.rotation);
                 }
             }
-        }
-        Set<Long> currentMembers = new HashSet<>();
-        for (BlockPos member : members.keySet()) {
-            currentMembers.add(member.asLong());
         }
         GroupInfo info = new GroupInfo(group, cols, minR, minD, imgRight, imgDown);
         info.members.addAll(currentMembers);
@@ -752,6 +752,13 @@ public final class FramedMapConnections {
             }
         }
         return false;
+    }
+
+    /** Drop only the affected frames from the per-frame context cache. */
+    private static void invalidate(Set<Long> positions) {
+        if (!positions.isEmpty()) {
+            CACHE.entrySet().removeIf(entry -> positions.contains(entry.getKey().pos()));
+        }
     }
 
     /** An existing group of the same map/plane that shares at least one frame. */
