@@ -127,11 +127,19 @@ public final class WorldMarkerHud {
                 continue;
             }
             double dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-            int hx0 = sx - crossX;
-            int hy0 = sy - crossY;
+            int hx = sx - crossX;
+            int hy = sy - crossY;
+            double hoverDist = hx * hx + hy * hy;
             int alpha = 178;
-            if (hx0 * hx0 + hy0 * hy0 <= HOVER_RADIUS_SQ) {
+            if (hoverDist <= HOVER_RADIUS_SQ) {
                 alpha = 128;
+                if (hoverDist < hoverDistance) {
+                    hoverDistance = hoverDist;
+                    hovered = m;
+                    hoverX = sx;
+                    hoverY = sy;
+                    hoveredDist = dist;
+                }
             }
             if (dist < 5.0) {
                 double t = Math.max(0, Math.min(1, (dist - 1.0) / 4.0));
@@ -156,17 +164,6 @@ public final class WorldMarkerHud {
             int tint = m.color == 0 ? alpha << 24 | 0xFFFFFF : Paper.a(m.color, alpha);
             Paper.icon(g, icon.texture, sx - iconSize / 2, sy - iconSize / 2, iconSize, tint);
             drawn++;
-
-            int hx = sx - crossX;
-            int hy = sy - crossY;
-            double hoverDist = hx * hx + hy * hy;
-            if (hoverDist <= HOVER_RADIUS_SQ && hoverDist < hoverDistance) {
-                hoverDistance = hoverDist;
-                hovered = m;
-                hoverX = sx;
-                hoverY = sy;
-                hoveredDist = dist;
-            }
         }
         if (hovered != null) {
             drawName(g, mc.font, hovered, hoveredDist, hoverX, hoverY, sw, sh);

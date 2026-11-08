@@ -28,6 +28,7 @@ import org.webtrade.atlasmapextended.client.gui.Paper;
 
 import java.util.ArrayDeque;
 import java.util.HashMap;
+import java.util.List;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -478,12 +479,26 @@ public final class FramedMapConnections {
         return frameAt(level, pos, direction, rotation, ownData, ownId, mega) != null;
     }
 
+    private static long lastCacheTick = -1;
+    private static final Map<BlockPos, List<ItemFrame>> FRAME_POS_CACHE = new HashMap<>();
+
+    private static List<ItemFrame> framesAt(ClientLevel level, BlockPos pos) {
+        long tick = level.getGameTime();
+        if (tick != lastCacheTick) {
+            FRAME_POS_CACHE.clear();
+            lastCacheTick = tick;
+        }
+        return FRAME_POS_CACHE.computeIfAbsent(pos.immutable(), p -> {
+            AABB box = new AABB(p.getX(), p.getY(), p.getZ(),
+                    p.getX() + 1.0, p.getY() + 1.0, p.getZ() + 1.0).inflate(0.01);
+            return level.getEntitiesOfClass(ItemFrame.class, box);
+        });
+    }
+
     /** The item frame that occupies exactly this block, or null. */
     private static ItemFrame frameAt(ClientLevel level, BlockPos pos, Direction direction, int rotation,
                                      MapItemSavedData ownData, MapId ownId, boolean mega) {
-        AABB box = new AABB(pos.getX(), pos.getY(), pos.getZ(),
-                pos.getX() + 1.0, pos.getY() + 1.0, pos.getZ() + 1.0).inflate(0.01);
-        for (ItemFrame frame : level.getEntitiesOfClass(ItemFrame.class, box)) {
+        for (ItemFrame frame : framesAt(level, pos)) {
             // The frame box is a full block, so the inflated query also finds
             // the current frame and diagonal neighbours. Only the frame that
             // actually occupies the requested block is a side neighbour.
@@ -515,9 +530,7 @@ public final class FramedMapConnections {
     /** Same map, same plane, same scale, rotation intentionally ignored. */
     private static ItemFrame sameMapFrameAt(ClientLevel level, BlockPos pos, Direction direction,
                                             MapId ownId, MapItemSavedData ownData) {
-        AABB box = new AABB(pos.getX(), pos.getY(), pos.getZ(),
-                pos.getX() + 1.0, pos.getY() + 1.0, pos.getZ() + 1.0).inflate(0.01);
-        for (ItemFrame frame : level.getEntitiesOfClass(ItemFrame.class, box)) {
+        for (ItemFrame frame : framesAt(level, pos)) {
             if (!frame.blockPosition().equals(pos) || frame.getDirection() != direction) {
                 continue;
             }
@@ -1039,9 +1052,7 @@ public final class FramedMapConnections {
 
     private static void debugSide(ClientLevel level, BlockPos pos, String side,
                                   ItemFrameRenderState state, MapItemSavedData ownData) {
-        AABB box = new AABB(pos.getX(), pos.getY(), pos.getZ(),
-                pos.getX() + 1.0, pos.getY() + 1.0, pos.getZ() + 1.0).inflate(0.01);
-        var frames = level.getEntitiesOfClass(ItemFrame.class, box);
+        var frames = framesAt(level, pos);
         if (frames.isEmpty()) {
             FramedMapDebug.log("  {} {}: no item frame entity", side, pos);
             return;

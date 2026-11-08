@@ -32,6 +32,7 @@ public final class FramedMapRenderer {
     private static final int SPIN_TICKS = 80;
     private static final int SPIN_PAUSE = 5;
     private static final Set<String> LOGGED = new HashSet<>();
+    private static final Matrix4f ICON_MATRIX = new Matrix4f();
 
     private FramedMapRenderer() {
     }
@@ -130,7 +131,7 @@ public final class FramedMapRenderer {
                         continue;
                     }
                     boolean arrowIcon = icon.icon().startsWith("arrow");
-                    Matrix4f matrix = new Matrix4f(base).translate(icon.x(), icon.y(), icon.z());
+                    Matrix4f matrix = ICON_MATRIX.set(base).translate(icon.x(), icon.y(), icon.z());
                     if (rotation != 0) {
                         // Icon positions are already in the rotated group
                         // image; the shape itself must turn with it too.
