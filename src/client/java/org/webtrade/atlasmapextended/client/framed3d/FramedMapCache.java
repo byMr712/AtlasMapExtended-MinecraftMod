@@ -2,6 +2,8 @@ package org.webtrade.atlasmapextended.client.framed3d;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.saveddata.maps.MapId;
 import net.minecraft.world.level.saveddata.maps.MapItemSavedData;
 import org.webtrade.atlasmapextended.client.data.ModConfig;
@@ -10,6 +12,8 @@ import org.webtrade.atlasmapextended.client.data.Storage;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -27,9 +31,17 @@ public final class FramedMapCache {
     private static final int COLUMNS_PER_TICK = 512;
     /** Columns re-checked per tick to fill in areas that were not loaded during the first pass. */
     private static final int RETRY_COLUMNS_PER_TICK = 512;
+    /** Columns sampled per server tick by the singleplayer full-map fallback. */
+    private static final int SERVER_COLUMNS_PER_TICK = 64;
+    /** Do not retry a failed server sample more often than this (ticks). */
+    private static final int SERVER_RETRY_TICKS = 600;
     private static final Map<String, Entry> ENTRIES = new HashMap<>();
     /** Loaded/sampled volumes shared by every rotation/tile of the same map. */
     private static final Map<FramedMapKey, FramedMapVolume> STORED = new HashMap<>();
+    /** Maps whose full area is currently being sampled from the integrated server. */
+    private static final Set<FramedMapKey> SERVER_SAMPLES = ConcurrentHashMap.newKeySet();
+    private static final Map<FramedMapKey, Long> SERVER_RETRY_AT = new HashMap<>();
+    private static volatile int serverEpoch;
     private static final java.util.concurrent.atomic.AtomicInteger MESH_THREAD =
             new java.util.concurrent.atomic.AtomicInteger();
     private static final ExecutorService MESH_POOL = Executors.newFixedThreadPool(2, task -> {
@@ -65,6 +77,7 @@ public final class FramedMapCache {
         FramedMapOverlay overlay;
         long builtHash;
         long lastBuildTick;
+        long lastSeenTick;
 
         Entry(FramedMapKey key, int mask, int tileDiv, int tileCol, int tileRow, int tileRotation,
               int reliefDiv, int lodStep, boolean group) {
@@ -82,6 +95,19 @@ public final class FramedMapCache {
                     : key.dimension().identifier() + "#" + key.mapId() + "#" + this.mask
                     + "@" + tileDiv + ":" + tileCol + ":" + tileRow + ":" + this.tileRotation
                     + ":" + lodStep;
+        }
+    }
+
+    /** One full-map sample running on the integrated server thread. */
+    private static final class ServerSampleJob {
+        final FramedMapKey key;
+        final int epoch;
+        final FramedMapVolume volume = new FramedMapVolume();
+        int cursor;
+
+        ServerSampleJob(FramedMapKey key, int epoch) {
+            this.key = key;
+            this.epoch = epoch;
         }
     }
 
@@ -148,6 +174,7 @@ public final class FramedMapCache {
             }
         }
 
+        entry.lastSeenTick = level.getGameTime();
         return entry.mesh;
     }
 
@@ -206,6 +233,7 @@ public final class FramedMapCache {
                 startSampling(entry, hash);
             }
         }
+        entry.lastSeenTick = level.getGameTime();
         return entry.mesh;
     }
 
@@ -259,7 +287,133 @@ public final class FramedMapCache {
                 }
                 continue;
             }
-            retryMissing(level, entry);
+            startServerSampleIfNeeded(level, entry);
+            if (!SERVER_SAMPLES.contains(entry.key)) {
+                retryMissing(level, entry);
+            }
+        }
+    }
+
+    /**
+     * In singleplayer the integrated server can load the whole map area even
+     * when the client's render distance does not reach it. This records the
+     * complete volume once and saves it, instead of leaving half the map flat.
+     */
+    private static void startServerSampleIfNeeded(ClientLevel clientLevel, Entry entry) {
+        if (entry.complete) {
+            return;
+        }
+        MinecraftServer server = Minecraft.getInstance().getSingleplayerServer();
+        if (server == null) {
+            return;
+        }
+        long now = clientLevel.getGameTime();
+        if (now - entry.lastSeenTick > 200) {
+            return;
+        }
+        Long retryAt = SERVER_RETRY_AT.get(entry.key);
+        if (retryAt != null && now < retryAt) {
+            return;
+        }
+        if (!SERVER_SAMPLES.isEmpty()) {
+            return;
+        }
+        if (!SERVER_SAMPLES.add(entry.key)) {
+            return;
+        }
+        ServerLevel serverLevel = server.getLevel(entry.key.dimension());
+        if (serverLevel == null) {
+            SERVER_SAMPLES.remove(entry.key);
+            return;
+        }
+        sampleServerBatch(server, serverLevel, new ServerSampleJob(entry.key, serverEpoch));
+    }
+
+    private static void sampleServerBatch(MinecraftServer server, ServerLevel level, ServerSampleJob job) {
+        server.execute(() -> {
+            if (job.epoch != serverEpoch) {
+                SERVER_SAMPLES.remove(job.key);
+                return;
+            }
+            try {
+                int end = Math.min(FramedMapVolume.COLUMNS, job.cursor + SERVER_COLUMNS_PER_TICK);
+                for (; job.cursor < end; job.cursor++) {
+                    int px = job.cursor % FramedMapVolume.SIZE;
+                    int pz = job.cursor / FramedMapVolume.SIZE;
+                    FramedMapSampler.sampleColumn(level, job.volume, job.key, px, pz, true);
+                }
+            } catch (Throwable t) {
+                Storage.LOG.warn("[AtlasMap3D] server sampling failed map={}", job.key.mapId(), t);
+                SERVER_SAMPLES.remove(job.key);
+                return;
+            }
+            if (job.cursor < FramedMapVolume.COLUMNS) {
+                sampleServerBatch(server, level, job);
+            } else {
+                Minecraft.getInstance().execute(() -> finishServerSample(job));
+            }
+        });
+    }
+
+    private static void finishServerSample(ServerSampleJob job) {
+        if (job.epoch != serverEpoch) {
+            SERVER_SAMPLES.remove(job.key);
+            return;
+        }
+        SERVER_SAMPLES.remove(job.key);
+        long now = Minecraft.getInstance().level != null
+                ? Minecraft.getInstance().level.getGameTime() : 0L;
+        FramedMapVolume base = null;
+        for (Entry entry : ENTRIES.values()) {
+            if (entry.key.equals(job.key) && entry.volume != job.volume) {
+                base = entry.volume;
+                break;
+            }
+        }
+        if (base != null) {
+            mergeMissing(job.volume, base);
+        }
+        int valid = validCount(job.volume);
+        if (valid == 0) {
+            SERVER_RETRY_AT.put(job.key, now + SERVER_RETRY_TICKS);
+            return;
+        }
+        boolean complete = valid == FramedMapVolume.COLUMNS;
+        STORED.put(job.key, job.volume);
+        FramedMapStorage.save(job.key, job.volume);
+        for (Entry entry : ENTRIES.values()) {
+            if (!entry.key.equals(job.key)) {
+                continue;
+            }
+            entry.volume = job.volume;
+            entry.complete = complete;
+            entry.sampling = false;
+            entry.dirty = false;
+            entry.retryCursor = 0;
+            entry.generation++;
+            startBuild(entry);
+        }
+        if (complete) {
+            SERVER_RETRY_AT.remove(job.key);
+        } else {
+            SERVER_RETRY_AT.put(job.key, now + SERVER_RETRY_TICKS);
+        }
+        FramedMapDebug.detail("server sampled map={} valid={}", job.key.mapId(), valid);
+    }
+
+    /** Keep client-sampled columns the server could not load. */
+    private static void mergeMissing(FramedMapVolume dst, FramedMapVolume src) {
+        for (int i = 0; i < FramedMapVolume.COLUMNS; i++) {
+            if (dst.valid[i] || !src.valid[i]) {
+                continue;
+            }
+            dst.valid[i] = true;
+            dst.surfaceY[i] = src.surfaceY[i];
+            dst.rgb[i] = src.rgb[i];
+            dst.water[i] = src.water[i];
+            dst.waterDepth[i] = src.waterDepth[i];
+            System.arraycopy(src.layerColor, i * FramedMapVolume.LAYERS,
+                    dst.layerColor, i * FramedMapVolume.LAYERS, FramedMapVolume.LAYERS);
         }
     }
 
@@ -418,5 +572,8 @@ public final class FramedMapCache {
     public static void clear() {
         ENTRIES.clear();
         STORED.clear();
+        SERVER_SAMPLES.clear();
+        SERVER_RETRY_AT.clear();
+        serverEpoch++;
     }
 }

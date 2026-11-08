@@ -1,7 +1,7 @@
 package org.webtrade.atlasmapextended.client.framed3d;
 
-import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.levelgen.Heightmap;
@@ -18,17 +18,34 @@ public final class FramedMapSampler {
     }
 
     public static void sampleColumn(
-            ClientLevel level,
+            Level level,
             FramedMapVolume volume,
             FramedMapKey key,
             int px, int pz
+    ) {
+        sampleColumn(level, volume, key, px, pz, false);
+    }
+
+    /**
+     * {@code loadChunks} is used by the integrated-server fallback: the server
+     * may load a chunk that the client never received, so the whole map can be
+     * recorded even when it is far from the player.
+     */
+    public static void sampleColumn(
+            Level level,
+            FramedMapVolume volume,
+            FramedMapKey key,
+            int px, int pz,
+            boolean loadChunks
     ) {
         int index = pz * FramedMapVolume.SIZE + px;
 
         int scaleFactor = key.scaleFactor();
         int wx = key.originX() + px * scaleFactor;
         int wz = key.originZ() + pz * scaleFactor;
-        if (!level.hasChunk(wx >> 4, wz >> 4)) {
+        if (loadChunks) {
+            level.getChunk(wx >> 4, wz >> 4);
+        } else if (!level.hasChunk(wx >> 4, wz >> 4)) {
             return;
         }
 
@@ -76,7 +93,7 @@ public final class FramedMapSampler {
     }
 
     /** Records the first blocks below the surface so cut faces show real strata. */
-    private static void sampleLayers(ClientLevel level, LevelChunk chunk, FramedMapVolume volume,
+    private static void sampleLayers(Level level, LevelChunk chunk, FramedMapVolume volume,
                                      int index, int wx, int surface, int wz, MapColor surfaceColor) {
         int packed = surfaceColor.getPackedId(MapColor.Brightness.NORMAL) & 0xFF;
         int base = index * FramedMapVolume.LAYERS;
