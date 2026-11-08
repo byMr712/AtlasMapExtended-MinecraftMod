@@ -142,6 +142,9 @@ public class ItemFrameRendererMixin {
             CameraRenderState camera,
             CallbackInfo ci
     ) {
+        if (FramedMapConnections.currentSuppress3D()) {
+            return;
+        }
         FramedMapRenderer.render(
                 state, pose, collector, FramedMapConnections.currentTextureMask(),
                 FramedMapConnections.currentTileDiv(),

@@ -51,6 +51,8 @@ public final class FramedMapConnections {
     private static final Identifier WHITE = Paper.id("textures/gui/white.png");
     private static final int CACHE_TICKS = 10;
     private static final int GROUP_TICKS = 10;
+    /** Large unfinished same-map clusters render flat until the mega forms. */
+    private static final int INCOMPLETE_3D_LIMIT = 6;
     private static final int MAX_CACHE = 8192;
     private static final Map<Key, Cached> CACHE = new HashMap<>();
     private static final Set<Key> LOGGED_KEYS = new HashSet<>();
@@ -58,6 +60,8 @@ public final class FramedMapConnections {
     private static final Map<SingleKey, SingleState> SINGLE = new HashMap<>();
     private static final Map<GroupKey, GroupInfo> GROUP_INFO = new HashMap<>();
     private static final Map<Long, GroupKey> POSITION_GROUP = new HashMap<>();
+    /** Positions of large unfinished clusters, valid for a few ticks. */
+    private static final Map<Long, Long> SUPPRESS_SCAN = new HashMap<>();
     private static Context current;
 
     private FramedMapConnections() {
@@ -65,7 +69,7 @@ public final class FramedMapConnections {
 
     public record Context(int frameMask, int textureMask, int worldMask,
                           int tileDiv, int tileCol, int tileRow, int tileRotation,
-                          boolean glow, int light, boolean hideFrame) {
+                          boolean glow, int light, boolean hideFrame, boolean suppress3D) {
     }
 
     private record Key(long pos, int direction, int mapId, int rotation, ResourceKey<Level> dimension) {
@@ -73,7 +77,7 @@ public final class FramedMapConnections {
 
     private record Cached(long tick, int frameMask, int textureMask, int worldMask,
                           int tileDiv, int tileCol, int tileRow, int singleRotation,
-                          GroupKey group) {
+                          boolean suppress3D, GroupKey group) {
     }
 
     private record SingleKey(long pos, int direction, int mapId, ResourceKey<Level> dimension) {
@@ -84,7 +88,7 @@ public final class FramedMapConnections {
         int entityId = Integer.MIN_VALUE;
     }
 
-    private record TileInfo(int div, int col, int row, GroupKey group) {
+    private record TileInfo(int div, int col, int row, GroupKey group, boolean suppress3D) {
     }
 
     private record GroupKey(long anchor, int div, int direction, int mapId,
@@ -114,7 +118,7 @@ public final class FramedMapConnections {
 
         TileInfo tileAt(BlockPos pos) {
             return new TileInfo(div, dot(pos, imgRight) - minR,
-                    dot(pos, imgDown) - minD, key);
+                    dot(pos, imgDown) - minD, key, false);
         }
     }
 
@@ -150,6 +154,11 @@ public final class FramedMapConnections {
 
     public static int currentTileRotation() {
         return current == null ? 0 : current.tileRotation();
+    }
+
+    /** Large unfinished clusters are shown flat until the square is complete. */
+    public static boolean currentSuppress3D() {
+        return current != null && current.suppress3D();
     }
 
     /**
@@ -251,7 +260,8 @@ public final class FramedMapConnections {
                 singleRotation = singleRotation(level, pos, state, data, camera);
             }
             cached = new Cached(tick, frameMask, textureMask, worldMask,
-                    tile.div(), tile.col(), tile.row(), singleRotation, tile.group());
+                    tile.div(), tile.col(), tile.row(), singleRotation,
+                    tile.suppress3D(), tile.group());
             if (CACHE.size() > MAX_CACHE) {
                 CACHE.clear();
             }
@@ -282,7 +292,7 @@ public final class FramedMapConnections {
         int light = state.isGlowFrame ? 15728880 : state.lightCoords;
         current = new Context(frameMask, textureMask, worldMask,
                 cached.tileDiv(), cached.tileCol(), cached.tileRow(), tileRotation,
-                state.isGlowFrame, light, worldMask != 0);
+                state.isGlowFrame, light, worldMask != 0, cached.suppress3D());
     }
 
     public static void end() {
@@ -295,6 +305,7 @@ public final class FramedMapConnections {
         GROUPS.clear();
         GROUP_INFO.clear();
         POSITION_GROUP.clear();
+        SUPPRESS_SCAN.clear();
         LOGGED_KEYS.clear();
         RIM_LOGGED.clear();
         FramedMapRenderer.clearDiagnostics();
@@ -413,11 +424,19 @@ public final class FramedMapConnections {
      */
     private static TileInfo computeTile(ClientLevel level, BlockPos start, ItemFrameRenderState state,
                                         MapItemSavedData data, CameraRenderState camera) {
-        TileInfo none = new TileInfo(1, 0, 0, null);
+        TileInfo none = new TileInfo(1, 0, 0, null, false);
         if (state.mapId == null) {
             return none;
         }
         long startLong = start.asLong();
+        Long suppressTick = SUPPRESS_SCAN.get(startLong);
+        if (suppressTick != null) {
+            long tick = level.getGameTime();
+            if (tick - suppressTick < GROUP_TICKS) {
+                return new TileInfo(1, 0, 0, null, true);
+            }
+            SUPPRESS_SCAN.remove(startLong);
+        }
         GroupKey known = POSITION_GROUP.get(startLong);
         if (known != null) {
             GroupInfo info = GROUP_INFO.get(known);
@@ -514,6 +533,16 @@ public final class FramedMapConnections {
                     invalidate(old.members);
                 }
             }
+            // Several identical maps that do not form a full square yet:
+            // render them flat until the mega-map is complete, otherwise
+            // every frame submits a full 128x128 relief.
+            if (count >= INCOMPLETE_3D_LIMIT && cols >= 2 && rows >= 2) {
+                long tick = level.getGameTime();
+                for (BlockPos member : members.keySet()) {
+                    SUPPRESS_SCAN.put(member.asLong(), tick);
+                }
+                return new TileInfo(1, 0, 0, null, true);
+            }
             return none;
         }
         int col = dot(start, imgRight) - minR;
@@ -569,6 +598,9 @@ public final class FramedMapConnections {
             }
             // Let every tile pick up the fresh orientation immediately.
             invalidate(currentMembers);
+            for (long member : currentMembers) {
+                SUPPRESS_SCAN.remove(member);
+            }
             FramedMapDebug.log("group formed map={} tile={}x{} members={} rot={}",
                     state.mapId.id(), cols, cols, members.size(), initialRotation);
         } else {
