@@ -462,7 +462,7 @@ public final class FramedMapMesher {
                     float h01 = heights[(cz + 1) * stride + cx];
                     float h11 = heights[(cz + 1) * stride + cx + 1];
                     int color = colors[rep];
-                    if (cx == 0 && (textureMask & FramedMapConnections.TEX_LEFT) == 0) {
+                    if (cx == 0 && (div <= 1 || (textureMask & FramedMapConnections.TEX_LEFT) == 0)) {
                         quads.add(new Quad(
                                 x0, z1, 0.0f,
                                 x0, z0, 0.0f,
@@ -470,7 +470,7 @@ public final class FramedMapMesher {
                                 x0, z1, h01,
                                 shade(color, SIDE_SHADE)));
                     }
-                    if (cx + 1 == cells && (textureMask & FramedMapConnections.TEX_RIGHT) == 0) {
+                    if (cx + 1 == cells && (div <= 1 || (textureMask & FramedMapConnections.TEX_RIGHT) == 0)) {
                         quads.add(new Quad(
                                 x1, z0, 0.0f,
                                 x1, z1, 0.0f,
@@ -478,7 +478,7 @@ public final class FramedMapMesher {
                                 x1, z0, h10,
                                 shade(color, SIDE_SHADE)));
                     }
-                    if (cz == 0 && (textureMask & FramedMapConnections.TEX_TOP) == 0) {
+                    if (cz == 0 && (div <= 1 || (textureMask & FramedMapConnections.TEX_TOP) == 0)) {
                         quads.add(new Quad(
                                 x0, z0, 0.0f,
                                 x1, z0, 0.0f,
@@ -486,7 +486,7 @@ public final class FramedMapMesher {
                                 x0, z0, h00,
                                 shade(color, EDGE_SHADE)));
                     }
-                    if (cz + 1 == cells && (textureMask & FramedMapConnections.TEX_BOTTOM) == 0) {
+                    if (cz + 1 == cells && (div <= 1 || (textureMask & FramedMapConnections.TEX_BOTTOM) == 0)) {
                         quads.add(new Quad(
                                 x1, z1, 0.0f,
                                 x0, z1, 0.0f,
@@ -516,11 +516,8 @@ public final class FramedMapMesher {
     private static float seamDepth(FramedMapVolume source, FramedMapVolume tile, int startY, int div,
                                    int dstX0, int dstX1, int dstZ0, int dstZ1, int rotation,
                                    int px, int pz, int dx, int dz, float own, boolean internal) {
-        if (!internal) {
+        if (!internal || div <= 1) {
             return 0;
-        }
-        if (div <= 1) {
-            return own;
         }
         int rx = dstX0 + px * (dstX1 - dstX0) / FramedMapVolume.SIZE;
         int rz = dstZ0 + pz * (dstZ1 - dstZ0) / FramedMapVolume.SIZE;

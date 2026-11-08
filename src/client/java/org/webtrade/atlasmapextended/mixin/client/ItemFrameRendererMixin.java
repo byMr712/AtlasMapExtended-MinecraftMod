@@ -82,13 +82,6 @@ public class ItemFrameRendererMixin {
         boolean hide3D = ModConfig.get().framedMaps3D
                 && context != null && !context.suppress3D();
         if (context != null && (context.hideFrame() || hide3D)) {
-            // In 3D the rim would float above the relief and can occlude the
-            // relief's side walls. A mega-map is also borderless in 2D; only
-            // normal groups keep the thin outer rim.
-            if ((!ModConfig.get().framedMaps3D || context.suppress3D()) && context.tileDiv() <= 1) {
-                FramedMapConnections.renderOuterFrame(
-                        pose, collector, context.worldMask(), context.glow(), context.light());
-            }
             return;
         }
         int frameLight = context != null && context.glow() ? 15728880 : light;
