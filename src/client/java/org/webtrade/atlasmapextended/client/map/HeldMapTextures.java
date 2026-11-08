@@ -109,7 +109,13 @@ public final class HeldMapTextures {
             FramedMapOverlay overlay = withOverlay
                     ? overlayFor(mapId, data, data.centerX, data.centerZ) : null;
             int colorsHash = Arrays.hashCode(data.colors);
-            long hash = colorsHash * 31L + (overlay == null ? 0 : 1)
+            // A map id can be re-centred/re-scaled (copies, zoom, server map
+            // reload). The texture must repaint when the centre, scale or the
+            // frozen overlay changes, not only when the colours change.
+            int overlayHash = overlay == null ? 0 : System.identityHashCode(overlay);
+            long hash = colorsHash * 31L
+                    + data.centerX * 131L + data.centerZ * 17L + data.scale * 7L
+                    + overlayHash
                     + (withOverlay ? 1 : 0) + mask * 17L + (border ? 1 : 0)
                     + div * 131L + tileCol * 31L + tileRow + rotation * 17L;
             if (entry.hash != hash) {
