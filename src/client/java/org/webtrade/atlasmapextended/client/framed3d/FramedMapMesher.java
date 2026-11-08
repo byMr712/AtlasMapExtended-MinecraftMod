@@ -475,7 +475,7 @@ public final class FramedMapMesher {
 
         if (overlay != null) {
             addOverlay(volume, startY, depth, lines, icons, overlay, scaleFactor,
-                    relief, dstX0, dstX1, dstZ0, dstZ1, rotation);
+                    relief, dstX0, dstX1, dstZ0, dstZ1, rotation, step <= 2);
         }
         return finish(quads, lines, icons);
     }
@@ -585,29 +585,32 @@ public final class FramedMapMesher {
     private static void addOverlay(FramedMapVolume volume, int startY, float[] depth,
                                    List<Line> lines, List<FramedMapMesh.VoxelIcon> icons,
                                    FramedMapOverlay overlay, int scaleFactor,
-                                   int div, int dstX0, int dstX1, int dstZ0, int dstZ1, int rotation) {
-        for (Marker marker : overlay.markers) {
-            int fullX = pixelX(overlay, scaleFactor, marker.x);
-            int fullZ = pixelZ(overlay, scaleFactor, marker.z);
-            int displayX = FramedMapConnections.rotateSourceX(fullX, fullZ, rotation);
-            int displayZ = FramedMapConnections.rotateSourceZ(fullX, fullZ, rotation);
-            if (displayX < dstX0 + 4 || displayZ < dstZ0 + 4
-                    || displayX >= dstX1 - 4 || displayZ >= dstZ1 - 4) {
-                continue;
+                                   int div, int dstX0, int dstX1, int dstZ0, int dstZ1, int rotation,
+                                   boolean withIcons) {
+        if (withIcons) {
+            for (Marker marker : overlay.markers) {
+                int fullX = pixelX(overlay, scaleFactor, marker.x);
+                int fullZ = pixelZ(overlay, scaleFactor, marker.z);
+                int displayX = FramedMapConnections.rotateSourceX(fullX, fullZ, rotation);
+                int displayZ = FramedMapConnections.rotateSourceZ(fullX, fullZ, rotation);
+                if (displayX < dstX0 + 4 || displayZ < dstZ0 + 4
+                        || displayX >= dstX1 - 4 || displayZ >= dstZ1 - 4) {
+                    continue;
+                }
+                int px = tilePixel(displayX, dstX0, dstX1);
+                int pz = tilePixel(displayZ, dstZ0, dstZ1);
+                if (px < 0 || pz < 0 || px >= FramedMapVolume.SIZE || pz >= FramedMapVolume.SIZE) {
+                    continue;
+                }
+                int index = pz * FramedMapVolume.SIZE + px;
+                if (!volume.valid[index]) {
+                    continue;
+                }
+                float base = Math.max(0.5f, depth[index]);
+                String iconName = marker.icon == null || marker.icon.isBlank() ? "pin" : marker.icon;
+                icons.add(new FramedMapMesh.VoxelIcon(iconName, marker.color, px, pz,
+                        base + ICON_HOVER * div));
             }
-            int px = tilePixel(displayX, dstX0, dstX1);
-            int pz = tilePixel(displayZ, dstZ0, dstZ1);
-            if (px < 0 || pz < 0 || px >= FramedMapVolume.SIZE || pz >= FramedMapVolume.SIZE) {
-                continue;
-            }
-            int index = pz * FramedMapVolume.SIZE + px;
-            if (!volume.valid[index]) {
-                continue;
-            }
-            float base = Math.max(0.5f, depth[index]);
-            String iconName = marker.icon == null || marker.icon.isBlank() ? "pin" : marker.icon;
-            icons.add(new FramedMapMesh.VoxelIcon(iconName, marker.color, px, pz,
-                    base + ICON_HOVER * div));
         }
 
         for (Region region : overlay.regions) {
