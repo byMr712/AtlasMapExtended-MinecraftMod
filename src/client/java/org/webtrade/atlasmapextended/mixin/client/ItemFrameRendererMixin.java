@@ -101,12 +101,13 @@ public class ItemFrameRendererMixin {
         }
         MapItemSavedData data = level.getMapData(state.mapId);
         if (data != null) {
-            if (ModConfig.get().framedMaps3D) {
-                // The framed relief was drawn upside down relative to the
-                // vanilla map. Rotate the whole framed picture (base texture,
-                // decorations and 3D mesh) by 180 degrees around the map
-                // centre. The pose is already translated by -64,-64, so the
-                // centre compensation keeps the map inside its frame.
+            if (ModConfig.get().framedMaps3D
+                    && state.direction != null && state.direction.getAxis().isVertical()) {
+                // A floor/ceiling map is drawn 180 degrees from the wall map
+                // the player compares it with. Rotate only vertical frames so
+                // the wall reference stays as it is. The pose is already
+                // translated by -64,-64, so the centre compensation keeps the
+                // map inside its frame.
                 pose.translate(64.0f, 64.0f, 0.0f);
                 pose.mulPose(Axis.ZP.rotationDegrees(180.0f));
                 pose.translate(-64.0f, -64.0f, 0.0f);
