@@ -41,6 +41,7 @@ public final class FramedMapCache {
         final int tileDiv;
         final int tileCol;
         final int tileRow;
+        final int tileRotation;
         final String id;
         FramedMapVolume volume = new FramedMapVolume();
         long exploredHash;
@@ -56,20 +57,22 @@ public final class FramedMapCache {
         long builtHash;
         long lastBuildTick;
 
-        Entry(FramedMapKey key, int mask, int tileDiv, int tileCol, int tileRow) {
+        Entry(FramedMapKey key, int mask, int tileDiv, int tileCol, int tileRow, int tileRotation) {
             this.key = key;
             this.mask = mask & 0x0F;
             this.tileDiv = tileDiv;
             this.tileCol = tileCol;
             this.tileRow = tileRow;
+            this.tileRotation = tileRotation & 3;
             this.id = key.dimension().identifier() + "#" + key.mapId() + "#" + this.mask
-                    + "@" + tileDiv + ":" + tileCol + ":" + tileRow;
+                    + "@" + tileDiv + ":" + tileCol + ":" + tileRow + ":" + this.tileRotation;
         }
     }
 
     /** Called from the item frame renderer. Returns null until the mesh is ready. */
     public static FramedMapMesh getOrRequest(ClientLevel level, MapId mapId, MapItemSavedData data,
-                                             int textureMask, int tileDiv, int tileCol, int tileRow) {
+                                             int textureMask, int tileDiv, int tileCol, int tileRow,
+                                             int tileRotation) {
         if (!ModConfig.get().framedMaps3D || data.colors == null) {
             return null;
         }
@@ -80,13 +83,14 @@ public final class FramedMapCache {
                 level.getMinY(), level.getHeight());
         int mask = textureMask & 0x0F;
         int div = Math.max(1, tileDiv);
+        int rotation = div > 1 ? tileRotation & 3 : 0;
         String id = key.dimension().identifier() + "#" + key.mapId() + "#" + mask
-                + "@" + div + ":" + tileCol + ":" + tileRow;
+                + "@" + div + ":" + tileCol + ":" + tileRow + ":" + rotation;
         long hash = Arrays.hashCode(data.colors);
 
         Entry entry = ENTRIES.get(id);
         if (entry == null) {
-            entry = new Entry(key, mask, div, tileCol, tileRow);
+            entry = new Entry(key, mask, div, tileCol, tileRow, rotation);
             entry.overlay = FramedOverlayStorage.getOrCapture(key);
             FramedMapVolume stored = FramedMapStorage.load(key);
             if (stored != null) {
@@ -105,7 +109,7 @@ public final class FramedMapCache {
             }
             ENTRIES.put(id, entry);
         } else if (!entry.key.sameGeometry(key)) {
-            entry = new Entry(key, mask, div, tileCol, tileRow);
+            entry = new Entry(key, mask, div, tileCol, tileRow, rotation);
             entry.overlay = FramedOverlayStorage.getOrCapture(key);
             startSampling(entry, hash);
             ENTRIES.put(id, entry);
@@ -128,7 +132,7 @@ public final class FramedMapCache {
         if (!ModConfig.get().framedMaps3D || data.colors == null) {
             return;
         }
-        getOrRequest(level, mapId, data, 0, 1, 0, 0);
+        getOrRequest(level, mapId, data, 0, 1, 0, 0, 0);
     }
 
     private static void startSampling(Entry entry, long hash) {
@@ -249,8 +253,7 @@ public final class FramedMapCache {
                 FramedMapDebug.log("meshing start map={} mask={} tile={}x{} col={} row={}",
                         entry.key.mapId(), entry.mask, entry.tileDiv, entry.tileDiv,
                         entry.tileCol, entry.tileRow);
-                mesh = FramedMapMesher.build(snapshot, key, startY, snapshotOverlay,
-                        entry.mask, entry.tileDiv, entry.tileCol, entry.tileRow);
+                mesh = FramedMapMesher.build(snapshot, key, startY, snapshotOverlay, entry.mask, entry.tileDiv, entry.tileCol, entry.tileRow, entry.tileRotation);
                 FramedMapDebug.log("meshing done map={} mask={} tile={}x{} col={} row={} quads={}",
                         entry.key.mapId(), entry.mask, entry.tileDiv, entry.tileDiv,
                         entry.tileCol, entry.tileRow, mesh.quadCount());

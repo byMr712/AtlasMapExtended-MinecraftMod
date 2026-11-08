@@ -106,7 +106,8 @@ public class ItemFrameRendererMixin {
             }
             var texture = HeldMapTextures.getFramed(
                     state.mapId, data, FramedMapConnections.currentTextureMask(),
-                    tileDiv, FramedMapConnections.currentTileCol(), FramedMapConnections.currentTileRow());
+                    tileDiv, FramedMapConnections.currentTileCol(), FramedMapConnections.currentTileRow(),
+                    FramedMapConnections.currentTileRotation());
             if (texture != null) {
                 state.mapRenderState.texture = texture;
             }
@@ -129,6 +130,7 @@ public class ItemFrameRendererMixin {
                 state, pose, collector, FramedMapConnections.currentTextureMask(),
                 FramedMapConnections.currentTileDiv(),
                 FramedMapConnections.currentTileCol(),
-                FramedMapConnections.currentTileRow());
+                FramedMapConnections.currentTileRow(),
+                FramedMapConnections.currentTileRotation());
     }
 }
