@@ -19,6 +19,8 @@ public final class FramedMapMesher {
     private static final float MAX_DEPTH = 96.0f;
     /** Keeps the relief clearly in front of the flat map and avoids z-fighting. */
     private static final float BASE_OFFSET = 0.5f;
+    /** Overlap at joins so a one-pixel height step cannot show the paper below. */
+    private static final float SEAM_OVERLAP = 1.0f;
     private static final float SIDE_SHADE = 0.78f;
     private static final float EDGE_SHADE = 0.68f;
     /** How far above the surface marker icons hover, in map pixels. */
@@ -116,11 +118,21 @@ public final class FramedMapMesher {
                     }
                     run++;
                 }
+                float x0 = px == 0 && (textureMask & FramedMapConnections.TEX_LEFT) != 0
+                        ? -SEAM_OVERLAP : px;
+                float x1 = px + run == FramedMapVolume.SIZE
+                        && (textureMask & FramedMapConnections.TEX_RIGHT) != 0
+                        ? FramedMapVolume.SIZE + SEAM_OVERLAP : px + run;
+                float z0 = pz == 0 && (textureMask & FramedMapConnections.TEX_TOP) != 0
+                        ? -SEAM_OVERLAP : pz;
+                float z1 = pz + 1 == FramedMapVolume.SIZE
+                        && (textureMask & FramedMapConnections.TEX_BOTTOM) != 0
+                        ? FramedMapVolume.SIZE + SEAM_OVERLAP : pz + 1;
                 quads.add(new Quad(
-                        px, pz, d,
-                        px, pz + 1, d,
-                        px + run, pz + 1, d,
-                        px + run, pz, d,
+                        x0, z0, d,
+                        x0, z1, d,
+                        x1, z1, d,
+                        x1, z0, d,
                         color));
                 if (quads.size() >= MAX_QUADS) {
                     return finish(quads, lines, icons);

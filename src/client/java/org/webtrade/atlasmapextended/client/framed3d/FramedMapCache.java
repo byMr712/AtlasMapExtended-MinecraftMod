@@ -104,6 +104,19 @@ public final class FramedMapCache {
         return entry.mesh;
     }
 
+    /**
+     * Warms the stored relief for a map the player is carrying. It is sampled
+     * while the map's chunks are loaded, so the same map can show 3D in a
+     * frame far away later.
+     */
+    public static void prepareHeld(ClientLevel level, MapId mapId, MapItemSavedData data) {
+        if (!ModConfig.get().framedMaps3D || data.colors == null
+                || !data.dimension.equals(level.dimension())) {
+            return;
+        }
+        getOrRequest(level, mapId, data, 0);
+    }
+
     private static void startSampling(Entry entry, long hash) {
         entry.volume.clear();
         entry.exploredHash = hash;

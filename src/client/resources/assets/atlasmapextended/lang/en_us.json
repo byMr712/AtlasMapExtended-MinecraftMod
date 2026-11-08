@@ -34,6 +34,8 @@
   "atlasmapextended.list.nothing_found": "Nothing found.",
   "atlasmapextended.marker.unnamed": "Unnamed",
   "atlasmapextended.biome.title": "Biome",
+  "atlasmapextended.biome.too_far": "You are too far away to determine the biome",
+  "atlasmapextended.biome.unknown": "Unknown biome",
   "atlasmapextended.marker.show": "Show",
   "atlasmapextended.marker.hide": "Hide",
   "atlasmapextended.marker.no_desc": "— no description —",

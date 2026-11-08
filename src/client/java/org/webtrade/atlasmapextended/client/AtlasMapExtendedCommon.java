@@ -7,7 +7,12 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.events.GuiEventListener;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.saveddata.maps.MapId;
+import net.minecraft.world.level.saveddata.maps.MapItemSavedData;
 import org.webtrade.atlasmapextended.client.data.Marker;
 import org.webtrade.atlasmapextended.client.data.ModConfig;
 import org.webtrade.atlasmapextended.client.data.Storage;
@@ -47,6 +52,7 @@ public final class AtlasMapExtendedCommon {
     private static MapSession pendingShotSession;
     private static long pendingShotBefore;
     private static int pendingShotTicks;
+    private static int heldMapTick;
 
     private AtlasMapExtendedCommon() {
     }
@@ -60,6 +66,9 @@ public final class AtlasMapExtendedCommon {
         loadTheme();
         MapManager.tick(mc);
         FramedMapCache.tick(mc.level);
+        if (++heldMapTick % 20 == 0) {
+            prepareHeldMaps(mc);
+        }
         tickDeathMarker(mc);
         tickPendingDeathScreenshot(mc);
         RegionToast.tick();
@@ -108,6 +117,32 @@ public final class AtlasMapExtendedCommon {
         ModKeys.RULER.consumeClick();
         ModKeys.EDITOR.consumeClick();
         ModKeys.TOGGLE_DRAWINGS.consumeClick();
+    }
+
+    /** Samples carried maps while their chunks are loaded, so framed 3D works later. */
+    private static void prepareHeldMaps(Minecraft mc) {
+        if (!ModConfig.get().framedMaps3D || mc.level == null || mc.player == null) {
+            return;
+        }
+        ClientLevel level = mc.level;
+        for (ItemStack stack : mc.player.getInventory().getNonEquipmentItems()) {
+            prepareHeldMap(level, stack);
+        }
+        prepareHeldMap(level, mc.player.getOffhandItem());
+    }
+
+    private static void prepareHeldMap(ClientLevel level, ItemStack stack) {
+        if (stack.isEmpty()) {
+            return;
+        }
+        MapId mapId = stack.get(DataComponents.MAP_ID);
+        if (mapId == null) {
+            return;
+        }
+        MapItemSavedData data = level.getMapData(mapId);
+        if (data != null) {
+            FramedMapCache.prepareHeld(level, mapId, data);
+        }
     }
 
     /** Creates a red skull marker on the player's death, honouring the death-marker limit. */

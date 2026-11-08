@@ -40,6 +40,18 @@ public final class FramedMapStorage {
         if (path == null) {
             return;
         }
+        boolean any = false;
+        for (int i = 0; i < FramedMapVolume.COLUMNS; i++) {
+            if (volume.valid[i]) {
+                any = true;
+                break;
+            }
+        }
+        // Never overwrite a usable volume with an empty pass made while the
+        // map's chunks were not loaded.
+        if (!any) {
+            return;
+        }
         FramedMapVolume copy = volume.copy();
         Storage.IO.execute(() -> {
             try {
