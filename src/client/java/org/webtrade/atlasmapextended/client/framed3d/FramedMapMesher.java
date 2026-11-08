@@ -94,6 +94,10 @@ public final class FramedMapMesher {
         float[] depth = new float[FramedMapVolume.COLUMNS];
         int[] colors = new int[FramedMapVolume.COLUMNS];
         int scaleFactor = key.scaleFactor();
+        // A mega-map stretches one source block over {@code div} mesh units in
+        // both axes, so the relief cap must stretch with it. Capping at the
+        // single-map 96 units flattened every tile bigger than ~2x2.
+        float maxDepth = MAX_DEPTH * div;
 
         for (int pz = 0; pz < FramedMapVolume.SIZE; pz++) {
             for (int px = 0; px < FramedMapVolume.SIZE; px++) {
@@ -112,7 +116,7 @@ public final class FramedMapMesher {
                 // One map pixel is one terrain block tall even on zoomed-out
                 // maps. Dividing by the map scale made large maps almost flat.
                 float relief = Math.max(0, volume.surfaceY[index] - startY) * div;
-                depth[index] = Math.min(MAX_DEPTH, relief) + BASE_OFFSET;
+                depth[index] = Math.min(maxDepth, relief) + BASE_OFFSET;
                 int waterDepth = volume.water[index]
                         ? Math.max(1, volume.waterDepth[index] & 0xFF) : 0;
                 colors[index] = ChunkScanner.papyrus(
@@ -187,8 +191,10 @@ public final class FramedMapMesher {
                 if (d <= 0) {
                     continue;
                 }
-                int wx = key.originX() + px * scaleFactor;
-                int wz = key.originZ() + pz * scaleFactor;
+                int sx = dstX0 + (int) ((long) px * (dstX1 - dstX0) / FramedMapVolume.SIZE);
+                int sz = dstZ0 + (int) ((long) pz * (dstZ1 - dstZ0) / FramedMapVolume.SIZE);
+                int wx = key.originX() + sx * scaleFactor;
+                int wz = key.originZ() + sz * scaleFactor;
                 int surfaceColor = colors[index];
 
                 // Neighbouring maps continue the surface. For a mega-map the
@@ -199,25 +205,25 @@ public final class FramedMapMesher {
                         : seamDepth(source, volume, startY, div, dstX0, dstX1, dstZ0, dstZ1, rotation, px, pz, 1, 0, d, (textureMask & FramedMapConnections.TEX_RIGHT) != 0);
                 if (east < d) {
                     addWallEast(quads, volume, index, scaleFactor, wx, wz,
-                            px + 1, pz, east, d, surfaceColor);
+                            px + 1, pz, east, d, surfaceColor, div);
                 }
                 float west = px > 0 ? depth[index - 1]
                         : seamDepth(source, volume, startY, div, dstX0, dstX1, dstZ0, dstZ1, rotation, px, pz, -1, 0, d, (textureMask & FramedMapConnections.TEX_LEFT) != 0);
                 if (west < d) {
                     addWallWest(quads, volume, index, scaleFactor, wx, wz,
-                            px, pz, west, d, surfaceColor);
+                            px, pz, west, d, surfaceColor, div);
                 }
                 float south = pz + 1 < FramedMapVolume.SIZE ? depth[index + FramedMapVolume.SIZE]
                         : seamDepth(source, volume, startY, div, dstX0, dstX1, dstZ0, dstZ1, rotation, px, pz, 0, 1, d, (textureMask & FramedMapConnections.TEX_BOTTOM) != 0);
                 if (south < d) {
                     addWallSouth(quads, volume, index, scaleFactor, wx, wz,
-                            px, pz + 1, south, d, surfaceColor);
+                            px, pz + 1, south, d, surfaceColor, div);
                 }
                 float north = pz > 0 ? depth[index - FramedMapVolume.SIZE]
                         : seamDepth(source, volume, startY, div, dstX0, dstX1, dstZ0, dstZ1, rotation, px, pz, 0, -1, d, (textureMask & FramedMapConnections.TEX_TOP) != 0);
                 if (north < d) {
                     addWallNorth(quads, volume, index, scaleFactor, wx, wz,
-                            px, pz, north, d, surfaceColor);
+                            px, pz, north, d, surfaceColor, div);
                 }
                 if (quads.size() >= MAX_QUADS) {
                     return finish(quads, lines, icons);
@@ -260,48 +266,52 @@ public final class FramedMapMesher {
             return own;
         }
         float neighbor = Math.max(0, source.surfaceY[ni] - startY) * div;
-        return Math.min(MAX_DEPTH, neighbor) + BASE_OFFSET;
+        return Math.min(MAX_DEPTH * div, neighbor) + BASE_OFFSET;
     }
 
     private static void addWallEast(List<Quad> quads, FramedMapVolume volume, int index, int scaleFactor,
-                                    int wx, int wz, float x, float z, float from, float to, int surfaceColor) {
+                                    int wx, int wz, float x, float z, float from, float to, int surfaceColor,
+                                    int div) {
         for (float a = from; a < to; ) {
-            float b = Math.min(to, a + 1.0f);
+            float b = Math.min(to, a + div);
             int color = wallColor(volume, index, scaleFactor, wx, wz, to, (a + b) * 0.5f,
-                    surfaceColor, SIDE_SHADE);
+                    surfaceColor, SIDE_SHADE, div);
             quads.add(new Quad(x, z, a, x, z + 1, a, x, z + 1, b, x, z, b, color));
             a = b;
         }
     }
 
     private static void addWallWest(List<Quad> quads, FramedMapVolume volume, int index, int scaleFactor,
-                                    int wx, int wz, float x, float z, float from, float to, int surfaceColor) {
+                                    int wx, int wz, float x, float z, float from, float to, int surfaceColor,
+                                    int div) {
         for (float a = from; a < to; ) {
-            float b = Math.min(to, a + 1.0f);
+            float b = Math.min(to, a + div);
             int color = wallColor(volume, index, scaleFactor, wx, wz, to, (a + b) * 0.5f,
-                    surfaceColor, SIDE_SHADE);
+                    surfaceColor, SIDE_SHADE, div);
             quads.add(new Quad(x, z + 1, a, x, z, a, x, z, b, x, z + 1, b, color));
             a = b;
         }
     }
 
     private static void addWallSouth(List<Quad> quads, FramedMapVolume volume, int index, int scaleFactor,
-                                     int wx, int wz, float x, float z, float from, float to, int surfaceColor) {
+                                     int wx, int wz, float x, float z, float from, float to, int surfaceColor,
+                                     int div) {
         for (float a = from; a < to; ) {
-            float b = Math.min(to, a + 1.0f);
+            float b = Math.min(to, a + div);
             int color = wallColor(volume, index, scaleFactor, wx, wz, to, (a + b) * 0.5f,
-                    surfaceColor, EDGE_SHADE);
+                    surfaceColor, EDGE_SHADE, div);
             quads.add(new Quad(x + 1, z, a, x, z, a, x, z, b, x + 1, z, b, color));
             a = b;
         }
     }
 
     private static void addWallNorth(List<Quad> quads, FramedMapVolume volume, int index, int scaleFactor,
-                                     int wx, int wz, float x, float z, float from, float to, int surfaceColor) {
+                                     int wx, int wz, float x, float z, float from, float to, int surfaceColor,
+                                     int div) {
         for (float a = from; a < to; ) {
-            float b = Math.min(to, a + 1.0f);
+            float b = Math.min(to, a + div);
             int color = wallColor(volume, index, scaleFactor, wx, wz, to, (a + b) * 0.5f,
-                    surfaceColor, EDGE_SHADE);
+                    surfaceColor, EDGE_SHADE, div);
             quads.add(new Quad(x, z, a, x + 1, z, a, x + 1, z, b, x, z, b, color));
             a = b;
         }
@@ -310,12 +320,15 @@ public final class FramedMapMesher {
     /** Picks the sampled block colour for the wall segment, falling back to the surface colour. */
     private static int wallColor(FramedMapVolume volume, int index, int scaleFactor,
                                  int wx, int wz, float topDepth, float midDepth,
-                                 int surfaceColor, float factor) {
-        int below = Math.round(topDepth - midDepth);
-        if (below <= 0) {
+                                 int surfaceColor, float factor, int div) {
+        // One terrain block is {@code div} mesh units, so a wall slice must
+        // step by div to show the real strata instead of compressed stripes.
+        float belowTop = topDepth - midDepth;
+        if (belowTop < 0.5f * div) {
+            // The thin partial slice at the very top of an outer wall.
             return shade(surfaceColor, factor);
         }
-        int layer = Math.min(FramedMapVolume.LAYERS - 1, below - 1);
+        int layer = Math.min(FramedMapVolume.LAYERS - 1, (int) Math.floor(belowTop / div));
         int packed = volume.layerColor[index * FramedMapVolume.LAYERS + layer] & 0xFF;
         if (packed == 0) {
             return shade(surfaceColor, factor);
@@ -409,10 +422,11 @@ public final class FramedMapMesher {
         if (!volume.valid[i0] || !volume.valid[i1]) {
             return;
         }
+        float maxDepth = MAX_DEPTH * div;
         float d0 = Math.max(0.3f, (volume.surfaceY[i0] - startY) * div) + 1.5f;
         float d1 = Math.max(0.3f, (volume.surfaceY[i1] - startY) * div) + 1.5f;
-        lines.add(new Line(px0, pz0, Math.min(MAX_DEPTH, d0),
-                px1, pz1, Math.min(MAX_DEPTH, d1), color));
+        lines.add(new Line(px0, pz0, Math.min(maxDepth, d0),
+                px1, pz1, Math.min(maxDepth, d1), color));
     }
 
     private static boolean inside(int px, int pz) {
