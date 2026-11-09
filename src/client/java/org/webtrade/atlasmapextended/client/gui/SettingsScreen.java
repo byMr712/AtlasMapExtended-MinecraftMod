@@ -72,7 +72,7 @@ public class SettingsScreen extends Screen {
         boolean twoCols = pw >= 380;
         int colW = twoCols ? (pw - 30) / 2 : pw - 20;
         int designH = 12 + 16 + 4 + 16 + 6
-                + font.split(T.tr("settings.death_markers_note"), colW).size() * 10 + 4;
+                + font.split(T.tr("settings.death_markers_note"), colW).size() * 10 + 4 + 4 + ROW;
         int optionsH = 12 + 4 * ROW + 4 + 12 + 3 * ROW + 24;
         int contentH = twoCols ? Math.max(designH, optionsH) : designH + 8 + optionsH;
         int ph = Math.min(height - 16, contentH + 54);
