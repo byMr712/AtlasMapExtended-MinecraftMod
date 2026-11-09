@@ -19,7 +19,7 @@ import java.util.Map;
 
 /** Owns the map session of the world the player is currently in and keeps it up to date. */
 public final class MapManager {
-    private static final long SCAN_BUDGET_NS = 3_000_000L;
+    private static final long SCAN_BUDGET_NS = 1_500_000L;
 
     private static MapSession live;
     private static String liveDim;

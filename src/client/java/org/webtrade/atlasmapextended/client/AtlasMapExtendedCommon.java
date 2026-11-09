@@ -11,6 +11,14 @@ import net.minecraft.client.player.LocalPlayer;
 import org.webtrade.atlasmapextended.client.data.Marker;
 import org.webtrade.atlasmapextended.client.data.ModConfig;
 import org.webtrade.atlasmapextended.client.data.Storage;
+import org.webtrade.atlasmapextended.client.framed3d.FramedMapCache;
+import org.webtrade.atlasmapextended.client.framed3d.FramedMapDebug;
+import org.webtrade.atlasmapextended.client.map.MapLocationResolver;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.saveddata.maps.MapId;
+import net.minecraft.world.level.saveddata.maps.MapItemSavedData;
 import org.webtrade.atlasmapextended.client.gui.ImageCache;
 import org.webtrade.atlasmapextended.client.gui.MapScreen;
 import org.webtrade.atlasmapextended.client.gui.MinimapHud;
@@ -42,6 +50,8 @@ public final class AtlasMapExtendedCommon {
     private static final MinimapHud MINIMAP = new MinimapHud();
     private static boolean themeLoaded;
     private static boolean deathMarkerHandled;
+    private static int heldMapTick;
+    private static boolean loggedConfig;
 
     private AtlasMapExtendedCommon() {
     }
@@ -53,7 +63,17 @@ public final class AtlasMapExtendedCommon {
     public static void onTick(Minecraft mc) {
         ModConfig.tickFirstRunGuiScale();
         loadTheme();
+        if (!loggedConfig) {
+            loggedConfig = true;
+            ModConfig cfg = ModConfig.get();
+            FramedMapDebug.log("debug build active={} config framedMaps3D={} startY={} theme={}",
+                    FramedMapDebug.ENABLED, cfg.framedMaps3D, cfg.framedMapsStartY, cfg.theme);
+        }
         MapManager.tick(mc);
+        FramedMapCache.tick(mc.level);
+        if (++heldMapTick % 20 == 0) {
+            prepareHeldMaps(mc);
+        }
         tickDeathMarker(mc);
         RegionToast.tick();
         if (ModKeys.OPEN_MAP == null) {
@@ -101,6 +121,33 @@ public final class AtlasMapExtendedCommon {
         ModKeys.RULER.consumeClick();
         ModKeys.EDITOR.consumeClick();
         ModKeys.TOGGLE_DRAWINGS.consumeClick();
+    }
+
+    /** Samples carried maps while their chunks are loaded, so framed 3D works later. */
+    private static void prepareHeldMaps(Minecraft mc) {
+        if (!ModConfig.get().framedMaps3D || mc.level == null || mc.player == null) {
+            return;
+        }
+        ClientLevel level = mc.level;
+        for (ItemStack stack : mc.player.getInventory().items) {
+            prepareHeldMap(level, stack);
+        }
+        prepareHeldMap(level, mc.player.getOffhandItem());
+    }
+
+    private static void prepareHeldMap(ClientLevel level, ItemStack stack) {
+        if (stack.isEmpty()) {
+            return;
+        }
+        MapId mapId = stack.get(DataComponents.MAP_ID);
+        if (mapId == null) {
+            return;
+        }
+        MapItemSavedData data = level.getMapData(mapId);
+        if (data != null) {
+            MapLocationResolver.resolve(level, mapId, data, null);
+            FramedMapCache.prepareHeld(level, mapId, data);
+        }
     }
 
     /** Creates a red skull marker on the player's death, honouring the death-marker limit. */
