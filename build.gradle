@@ -74,6 +74,10 @@ tasks.withType(JavaCompile).configureEach {
     it.options.release.set(targetJavaVersion)
 }
 
+tasks.matching { it.name == 'runClientGameTest' }.configureEach {
+    jvmArgs '-Dfabric.client.gametest.disableNetworkSynchronizer=true'
+}
+
 java {
     toolchain.languageVersion = JavaLanguageVersion.of(targetJavaVersion)
 }
