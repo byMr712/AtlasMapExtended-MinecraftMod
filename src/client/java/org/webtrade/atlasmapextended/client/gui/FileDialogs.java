@@ -28,6 +28,9 @@ public final class FileDialogs {
         Thread thread = new Thread(() -> {
             List<Path> paths = new ArrayList<>();
             try {
+                if (java.awt.GraphicsEnvironment.isHeadless()) {
+                    return;
+                }
                 FileDialog dialog = new FileDialog((Frame) null, title, FileDialog.LOAD);
                 dialog.setMultipleMode(true);
                 dialog.setFilenameFilter((dir, name) -> {
