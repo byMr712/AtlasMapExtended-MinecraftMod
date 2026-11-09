@@ -38,6 +38,9 @@ public final class ChunkScanner {
                 if (ceiling) {
                     y = ceilingStart;
                     // skip the solid roof until we reach an open space, then fall to its floor
+                    while (y - 4 > minY && colorAt(chunk, level, pos, wx, y - 4, wz) != MapColor.NONE) {
+                        y -= 4;
+                    }
                     while (y > minY && colorAt(chunk, level, pos, wx, y, wz) != MapColor.NONE) {
                         y--;
                     }
@@ -57,11 +60,13 @@ public final class ChunkScanner {
                 int surface = y;
                 if (mc == MapColor.WATER) {
                     int yy = y;
-                    MapColor below = mc;
-                    while (yy > minY && below == MapColor.WATER && depth < 32) {
+                    while (yy - 4 > minY && depth + 4 <= 15 && colorAt(chunk, level, pos, wx, yy - 4, wz) == MapColor.WATER) {
+                        yy -= 4;
+                        depth += 4;
+                    }
+                    while (yy > minY && depth < 15 && colorAt(chunk, level, pos, wx, yy - 1, wz) == MapColor.WATER) {
                         yy--;
                         depth++;
-                        below = colorAt(chunk, level, pos, wx, yy, wz);
                     }
                 }
                 int i = lz * 16 + lx;
@@ -104,7 +109,7 @@ public final class ChunkScanner {
     }
 
     /** Converts a vanilla map colour to the muted, inked papyrus palette. */
-    static int papyrus(int rgb, int h, int hn, int hw, int waterDepth, int wx, int wz) {
+    public static int papyrus(int rgb, int h, int hn, int hw, int waterDepth, int wx, int wz) {
         float r;
         float g;
         float b;
