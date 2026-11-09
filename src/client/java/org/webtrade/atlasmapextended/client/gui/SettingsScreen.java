@@ -138,6 +138,14 @@ public class SettingsScreen extends Screen {
             g.text(font, l, x, y + 1, Paper.HINT, false);
             y += 10;
         }
+        y += 4;
+        int framedY = y;
+        y = option(g, mx, my, x, y, w, top, bottom,
+                T.tr("settings.framed_maps_3d", onOff(cfg.framedMaps3D)),
+                () -> cfg.framedMaps3D = !cfg.framedMaps3D);
+        if (Paper.inside(mx, my, x, framedY, w, 16) && my >= top && my < bottom) {
+            tooltip = T.tr("settings.framed_maps_3d_tip");
+        }
     }
     private void drawThemePopup(GuiGraphicsExtractor g, int mx, int my) {
         g.nextStratum();
