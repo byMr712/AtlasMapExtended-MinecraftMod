@@ -246,7 +246,9 @@ public class MapClientGameTest implements FabricClientGameTest {
             ctx.waitForScreen(SettingsScreen.class);
             ctx.waitTicks(5);
             ctx.takeScreenshot("13a_settings");
-            clickGui(ctx, input, mc -> themeTile(mc, 4));
+            clickGui(ctx, input, MapClientGameTest::chooseDesignButton);
+            ctx.waitTicks(3);
+            clickGui(ctx, input, mc -> popupThemeTile(mc, 4));
             ctx.waitTicks(3);
             ctx.takeScreenshot("13b_settings_modern_dark");
             ctx.runOnClient(mc -> {
@@ -339,19 +341,38 @@ public class MapClientGameTest implements FabricClientGameTest {
         return new int[]{ox + 8 + (i % 20) * 11 + 4, oy + 68 + (i / 20) * 11 + 4};
     }
 
-    /** Centre of theme tile i on the settings screen (two-column layout). */
-    private static int[] themeTile(Minecraft mc, int i) {
+    private static int[] chooseDesignButton(Minecraft mc) {
         int w = mc.screen.width;
         int h = mc.screen.height;
         int pw = Math.min(w - 16, 430);
         int px = (w - pw) / 2;
-        int colW = (pw - 30) / 2;
-        int themesH = 12 + 4 * 38;
-        int optionsH = 12 + 6 * 19 + 16 + 2 * 19 + 32;
-        int ph = Math.min(h - 16, Math.max(themesH, optionsH) + 54);
+        boolean twoCols = pw >= 380;
+        int colW = twoCols ? (pw - 30) / 2 : pw - 20;
+        int designH = 12 + 16 + 4 + 16 + 6
+                + mc.font.split(org.webtrade.atlasmapextended.client.gui.T.tr("settings.death_markers_note"), colW).size() * 10 + 4 + 4 + 19;
+        int optionsH = 12 + 4 * 19 + 4 + 12 + 3 * 19 + 24;
+        int contentH = twoCols ? Math.max(designH, optionsH) : designH + 8 + optionsH;
+        int ph = Math.min(h - 16, contentH + 54);
         int py = (h - ph) / 2;
-        int tw = (colW - 4) / 2;
-        return new int[]{px + 10 + (i % 2) * (tw + 4) + tw / 2, py + 22 + 12 + (i / 2) * 38 + 17};
+        int top = py + 22;
+        int lx = px + 10;
+        return new int[]{lx + colW / 2, top + 12 + 8};
+    }
+
+    private static int[] popupThemeTile(Minecraft mc, int i) {
+        int w = mc.screen.width;
+        int h = mc.screen.height;
+        int pw = Math.min(w - 16, 430);
+        int px = (w - pw) / 2;
+        int rows = (Theme.ALL.size() + 1) / 2;
+        int ph = Math.min(h - 16, 12 + rows * (32 + 4) + 40);
+        int py = (h - ph) / 2;
+        int x = px + 10;
+        int tw = (pw - 20 - 4) / 2;
+        int top = py + 24;
+        int tx = x + (i % 2) * (tw + 4);
+        int ty = top + (i / 2) * (32 + 4);
+        return new int[]{tx + tw / 2, ty + 16};
     }
 
     private interface Pos {
