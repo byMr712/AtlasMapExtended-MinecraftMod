@@ -46,7 +46,12 @@ public final class Storage {
     }
 
     public static Path worldDir(String id) {
-        return worldsDir().resolve(id);
+        Path root = worldsDir().toAbsolutePath().normalize();
+        Path dir = root.resolve(id).toAbsolutePath().normalize();
+        if (!dir.startsWith(root) || dir.equals(root)) {
+            return root.resolve(sanitize(id));
+        }
+        return dir;
     }
 
     /** Makes a file name out of any string; non-latin letters are kept, a hash avoids collisions. */

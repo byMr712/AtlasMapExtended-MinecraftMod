@@ -30,6 +30,8 @@ public class ModConfig {
     public int markerSort = 0;
     public int regionSort = 0;
     public String theme = "papyrus";
+    public boolean framedMaps3D = true;
+    public int framedMapsStartY = 60;
     /** Shows a "Teleport" button on markers (needs command permission). */
     public boolean teleport = false;
     public boolean markerLabels = true;
