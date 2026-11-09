@@ -15,6 +15,7 @@ import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.Set;
 import java.util.stream.Stream;
 
@@ -25,7 +26,7 @@ public class MapSession {
     public final List<Marker> markers;
     private final Map<String, List<Stroke>> strokes;
     private final Map<String, List<Region>> regions;
-    private final Map<String, MapLayer> layers = new HashMap<>();
+    private final Map<String, MapLayer> layers = new ConcurrentHashMap<>();
     boolean live;
 
     private MapSession(WorldMeta meta) {
