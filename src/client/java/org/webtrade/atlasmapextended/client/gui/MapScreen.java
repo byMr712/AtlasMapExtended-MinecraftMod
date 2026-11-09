@@ -608,16 +608,26 @@ public class MapScreen extends Screen {
     /** Localized biome name, or null when that spot has no scanned map data. */
     private String biomeAt(int x, int z) {
         Minecraft mc = Minecraft.getInstance();
-        if (mc.level == null || !dim.equals(mc.level.dimension().location().toString())
-                || !session.layer(dim).hasData(x, z)
-                || !mc.level.hasChunk(x >> 4, z >> 4)) {
+        if (mc.level == null || mc.player == null
+                || !dim.equals(mc.level.dimension().location().toString())
+                || !session.layer(dim).hasData(x, z)) {
             return null;
+        }
+        int chunkX = x >> 4;
+        int chunkZ = z >> 4;
+        int renderDistance = mc.options.getEffectiveRenderDistance();
+        int playerChunkX = mc.player.getBlockX() >> 4;
+        int playerChunkZ = mc.player.getBlockZ() >> 4;
+        if (Math.abs(chunkX - playerChunkX) > renderDistance
+                || Math.abs(chunkZ - playerChunkZ) > renderDistance
+                || !mc.level.hasChunk(chunkX, chunkZ)) {
+            return T.s("biome.too_far");
         }
         Holder<Biome> holder = mc.level.getBiome(new BlockPos(x, mc.level.getSeaLevel(), z));
         return holder.unwrapKey()
                 .map(key -> key.location().toString().replace(':', '.'))
                 .map(id -> Component.translatable("biome." + id).getString())
-                .orElse(null);
+                .orElse(T.s("biome.unknown"));
     }
 
     /** Test hook: the biome shown by the hover plaque, or null when hidden. */
@@ -1573,7 +1583,11 @@ public class MapScreen extends Screen {
         if (mc.player == null) {
             return;
         }
-        mc.player.connection.sendCommand("execute in " + m.dim + " run tp @s " + m.x + ".5 " + m.y + " " + m.z + ".5");
+        net.minecraft.resources.ResourceLocation dim = net.minecraft.resources.ResourceLocation.tryParse(m.dim);
+        if (dim == null || !dim.toString().equals(m.dim)) {
+            return;
+        }
+        mc.player.connection.sendCommand("execute in " + dim + " run tp @s " + m.x + ".5 " + m.y + " " + m.z + ".5");
         onClose();
     }
 
