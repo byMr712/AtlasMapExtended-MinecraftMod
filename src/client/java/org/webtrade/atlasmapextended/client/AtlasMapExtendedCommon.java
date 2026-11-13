@@ -219,7 +219,7 @@ public final class AtlasMapExtendedCommon {
         pendingShotBefore = newestScreenshot(mc.gameDirectory.toPath().resolve("screenshots"));
         pendingShotTicks = 60;
         try {
-            Screenshot.grab(mc, false);
+            Screenshot.grab(mc.gameDirectory, mc.gameRenderer.mainRenderTarget(), ignored -> {});
         } catch (Throwable t) {
             Storage.LOG.warn("Failed to capture the death screenshot", t);
         }
