@@ -227,12 +227,9 @@ public class MapScreen extends Screen {
     private String localMapSearch = "";
     private String serverMapSearch = "";
     private String realmMapSearch = "";
-    private boolean localsOpen = true;
-    private boolean serversOpen = true;
-    private boolean realmsOpen = true;
-    private int localSort = 0;
-    private int serverSort = 0;
-    private int realmSort = 0;
+    private boolean localsOpen = false;
+    private boolean serversOpen = false;
+    private boolean realmsOpen = false;
     private static final String[] MAP_SORTS = {"newest", "name", "markers"};
     private final Map<String, Integer> markerCounts = new HashMap<>();
 
@@ -4333,9 +4330,9 @@ public class MapScreen extends Screen {
         }
 
         boolean globalSearch = !mapSearch.isBlank();
-        List<WorldMeta> locals = filterAndSortMaps(rawLocals, globalSearch ? mapSearch : localMapSearch, localSort);
-        List<WorldMeta> servers = filterAndSortMaps(rawServers, globalSearch ? mapSearch : serverMapSearch, serverSort);
-        List<WorldMeta> realms = filterAndSortMaps(rawRealms, globalSearch ? mapSearch : realmMapSearch, realmSort);
+        List<WorldMeta> locals = filterAndSortMaps(rawLocals, globalSearch ? mapSearch : localMapSearch, cfg.localMapSort);
+        List<WorldMeta> servers = filterAndSortMaps(rawServers, globalSearch ? mapSearch : serverMapSearch, cfg.serverMapSort);
+        List<WorldMeta> realms = filterAndSortMaps(rawRealms, globalSearch ? mapSearch : realmMapSearch, cfg.realmMapSort);
 
         int rowH = 26;
         int totalH = 0;
@@ -4385,10 +4382,10 @@ public class MapScreen extends Screen {
         } else {
             if (!rawLocals.isEmpty()) {
                 drawListHeader(g, mx, my, ox + 8, y, ow - 16, top, bottom, "map.section.locals", locals.size(),
-                        localsOpen, MAP_SORTS, localSort,
+                        localsOpen, MAP_SORTS, cfg.localMapSort,
                         () -> localsOpen = !localsOpen,
-                        () -> localSort = (localSort + 1) % MAP_SORTS.length,
-                        () -> localSort = (localSort + MAP_SORTS.length - 1) % MAP_SORTS.length,
+                        () -> { cfg.localMapSort = (cfg.localMapSort + 1) % MAP_SORTS.length; cfg.save(); },
+                        () -> { cfg.localMapSort = (cfg.localMapSort + MAP_SORTS.length - 1) % MAP_SORTS.length; cfg.save(); },
                         null, false);
                 y += 18;
                 if (localsOpen) {
@@ -4402,10 +4399,10 @@ public class MapScreen extends Screen {
             }
             if (!rawServers.isEmpty()) {
                 drawListHeader(g, mx, my, ox + 8, y, ow - 16, top, bottom, "map.section.servers", servers.size(),
-                        serversOpen, MAP_SORTS, serverSort,
+                        serversOpen, MAP_SORTS, cfg.serverMapSort,
                         () -> serversOpen = !serversOpen,
-                        () -> serverSort = (serverSort + 1) % MAP_SORTS.length,
-                        () -> serverSort = (serverSort + MAP_SORTS.length - 1) % MAP_SORTS.length,
+                        () -> { cfg.serverMapSort = (cfg.serverMapSort + 1) % MAP_SORTS.length; cfg.save(); },
+                        () -> { cfg.serverMapSort = (cfg.serverMapSort + MAP_SORTS.length - 1) % MAP_SORTS.length; cfg.save(); },
                         null, false);
                 y += 18;
                 if (serversOpen) {
@@ -4419,10 +4416,10 @@ public class MapScreen extends Screen {
             }
             if (!rawRealms.isEmpty()) {
                 drawListHeader(g, mx, my, ox + 8, y, ow - 16, top, bottom, "map.section.realms", realms.size(),
-                        realmsOpen, MAP_SORTS, realmSort,
+                        realmsOpen, MAP_SORTS, cfg.realmMapSort,
                         () -> realmsOpen = !realmsOpen,
-                        () -> realmSort = (realmSort + 1) % MAP_SORTS.length,
-                        () -> realmSort = (realmSort + MAP_SORTS.length - 1) % MAP_SORTS.length,
+                        () -> { cfg.realmMapSort = (cfg.realmMapSort + 1) % MAP_SORTS.length; cfg.save(); },
+                        () -> { cfg.realmMapSort = (cfg.realmMapSort + MAP_SORTS.length - 1) % MAP_SORTS.length; cfg.save(); },
                         null, false);
                 y += 18;
                 if (realmsOpen) {
@@ -4593,6 +4590,13 @@ public class MapScreen extends Screen {
                 return;
             }
 
+            boolean isLive = session.isLive() || (MapManager.live() != null && targetId.equals(MapManager.live().meta.id));
+            if (isLive) {
+                MapManager.discardLive();
+            } else if (session != null) {
+                session.close();
+            }
+
             if (fullCopy) {
                 if (Files.isDirectory(dstDir)) {
                     MapManager.archiveWorld(targetId, "Replaced by " + sourceId);
@@ -4605,13 +4609,13 @@ public class MapScreen extends Screen {
                     meta = new WorldMeta();
                 }
                 meta.id = targetId;
-                WorldMeta liveMeta = MapManager.live() != null ? MapManager.live().meta : null;
-                if (liveMeta != null) {
-                    meta.name = liveMeta.name;
-                    meta.address = liveMeta.address;
-                    meta.type = liveMeta.type;
-                    meta.seed = liveMeta.seed;
-                    meta.uid = liveMeta.uid;
+                meta.name = (source.name != null && !source.name.isBlank()) ? source.name : source.id;
+                WorldMeta defaultMeta = MapManager.resolveDefaultKey(mc) != null ? MapManager.resolveMeta(mc) : null;
+                if (defaultMeta != null) {
+                    meta.address = defaultMeta.address;
+                    meta.type = defaultMeta.type;
+                    meta.seed = defaultMeta.seed;
+                    meta.uid = defaultMeta.uid;
                 }
                 meta.lastPlayed = System.currentTimeMillis();
                 Storage.writeJson(dstDir.resolve("meta.json"), meta);
@@ -4622,14 +4626,13 @@ public class MapScreen extends Screen {
                     cfg.save();
                 }
 
-                if (session.isLive()) {
-                    MapManager.switchLive(targetId);
+                if (isLive) {
+                    MapManager.reloadLive();
                     session = MapManager.live();
                 } else {
-                    session.close();
                     session = MapSession.open(meta);
                 }
-                WaypointShare.notifyPlayer(T.s("map.bind.success", source.name != null && !source.name.isBlank() ? source.name : source.id));
+                WaypointShare.notifyPlayer(T.s("map.bind.success", meta.name));
             } else {
                 Files.createDirectories(dstDir);
                 if (Files.exists(srcDir.resolve("markers.json"))) {
@@ -4645,12 +4648,11 @@ public class MapScreen extends Screen {
                     Storage.copyRecursive(srcDir.resolve("screenshots"), dstDir.resolve("screenshots"));
                 }
 
-                if (session.isLive()) {
-                    MapManager.switchLive(targetId);
+                if (isLive) {
+                    MapManager.reloadLive();
                     session = MapManager.live();
                 } else {
                     WorldMeta meta = Storage.readJson(dstDir.resolve("meta.json"), WorldMeta.class, null);
-                    session.close();
                     session = MapSession.open(meta != null ? meta : source);
                 }
                 WaypointShare.notifyPlayer(T.s("map.bind.markers_success", source.name != null && !source.name.isBlank() ? source.name : source.id));
@@ -4660,10 +4662,36 @@ public class MapScreen extends Screen {
                 if (parent instanceof MapScreen pMap) {
                     pMap.overlay = Overlay.NONE;
                     pMap.session = MapManager.live();
+                    pMap.selected = null;
+                    pMap.working = null;
+                    pMap.panel = Panel.NONE;
+                    pMap.selectedRegion = null;
+                    pMap.editingRegion = null;
+                    if (pMap.session != null) {
+                        pMap.dim = pMap.session.meta.lastDim != null ? pMap.session.meta.lastDim : pMap.dim;
+                        pMap.view.cx = pMap.session.meta.lastX;
+                        pMap.view.cz = pMap.session.meta.lastZ;
+                        if (pMap.session.isLive()) {
+                            pMap.centerOnPlayer();
+                        }
+                    }
                 }
                 minecraft.setScreen(parent);
             } else {
                 overlay = Overlay.NONE;
+                selected = null;
+                working = null;
+                panel = Panel.NONE;
+                selectedRegion = null;
+                editingRegion = null;
+                if (session != null) {
+                    dim = session.meta.lastDim != null ? session.meta.lastDim : dim;
+                    view.cx = session.meta.lastX;
+                    view.cz = session.meta.lastZ;
+                    if (session.isLive()) {
+                        centerOnPlayer();
+                    }
+                }
             }
             Paper.pageTurn();
         } catch (Exception e) {
