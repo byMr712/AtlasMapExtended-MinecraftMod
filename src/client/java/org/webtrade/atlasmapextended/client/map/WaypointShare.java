@@ -210,7 +210,7 @@ public final class WaypointShare {
         MutableComponent addBtn = Component.literal("[" + T.s("marker.share.add") + "]");
         addBtn.withStyle(style -> style
                 .withColor(0x55FF55)
-                .withHoverEvent(new HoverEvent.ShowText(Component.translatable("marker.share.add_tip")))
+                .withHoverEvent(new HoverEvent.ShowText(T.tr("marker.share.add_tip")))
                 .withClickEvent(new ClickEvent.RunCommand("/voxelmapAddWaypoint " + raw))
         );
         comp.append(addBtn);
@@ -219,7 +219,7 @@ public final class WaypointShare {
         MutableComponent viewBtn = Component.literal("[" + T.s("marker.share.view") + "]");
         viewBtn.withStyle(style -> style
                 .withColor(0x55FFFF)
-                .withHoverEvent(new HoverEvent.ShowText(Component.translatable("marker.share.view_tip")))
+                .withHoverEvent(new HoverEvent.ShowText(T.tr("marker.share.view_tip")))
                 .withClickEvent(new ClickEvent.RunCommand("/atlasmapViewWaypoint " + raw))
         );
         comp.append(viewBtn);
