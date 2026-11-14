@@ -332,5 +332,12 @@
   "atlasmapextended.region.share.view_tip": "Click to show region on map",
   "atlasmapextended.region.share.added": "Region “%s” added to map",
   "atlasmapextended.region.share.updated": "Region “%s” updated",
-  "atlasmapextended.region.share.showing": "Showing region “%s”"
+  "atlasmapextended.region.share.showing": "Showing region “%s”",
+  "atlasmapextended.tool.switch_map": "Switch World Map",
+  "atlasmapextended.map.select_title": "Select World Map",
+  "atlasmapextended.map.current_map": "Current: %s",
+  "atlasmapextended.map.active": "[Active]",
+  "atlasmapextended.map.switched": "Switched map to “%s”",
+  "atlasmapextended.map.new_server_map": "+ New Map",
+  "atlasmapextended.map.reset_override": "Reset to Default"
 }
