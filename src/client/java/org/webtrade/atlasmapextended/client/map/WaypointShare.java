@@ -6,17 +6,19 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.MutableComponent;
 import org.webtrade.atlasmapextended.client.data.Marker;
+import org.webtrade.atlasmapextended.client.data.Region;
 import org.webtrade.atlasmapextended.client.gui.MapScreen;
 import org.webtrade.atlasmapextended.client.gui.T;
 
+import java.util.List;
 import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Handles marker sharing compatible with VoxelMap (and Xaero's Minimap).
- * Generates and parses VoxelMap waypoint format strings in chat,
- * intercepts waypoint commands, and creates interactive chat components.
+ * Handles marker and region sharing compatible with VoxelMap (and Xaero's Minimap).
+ * Generates and parses VoxelMap waypoint and region format strings in chat,
+ * intercepts waypoint/region commands, and creates interactive chat components.
  */
 public final class WaypointShare {
 
@@ -39,6 +41,12 @@ public final class WaypointShare {
         public String icon = "pin";
         public String sharedBy;
         public String sharedWith;
+
+        // Region support
+        public boolean isRegion;
+        public boolean filled = true;
+        public String description = "";
+        public double[] pts;
     }
 
     private WaypointShare() {
@@ -64,6 +72,90 @@ public final class WaypointShare {
         sb.append(", sharedWith:").append(targetPlayer != null && !targetPlayer.isBlank() ? targetPlayer : "*");
         sb.append("]");
         return sb.toString();
+    }
+
+    public static String toRegionShareString(Region r, String senderName, String targetPlayer) {
+        StringBuilder sb = new StringBuilder();
+        String safeName = (r.name == null || r.name.isBlank()) ? "Region" : r.name.replace(',', ' ').replace(':', ' ').trim();
+        int cx = 0;
+        int cz = 0;
+        int n = r.pointCount();
+        if (n > 0) {
+            double sx = 0;
+            double sz = 0;
+            for (int i = 0; i < n; i++) {
+                sx += r.pts[i * 2];
+                sz += r.pts[i * 2 + 1];
+            }
+            cx = (int) Math.round(sx / n);
+            cz = (int) Math.round(sz / n);
+        }
+        sb.append("[name:").append(safeName);
+        sb.append(", type:region");
+        sb.append(", x:").append(cx);
+        sb.append(", y:64");
+        sb.append(", z:").append(cz);
+        sb.append(", dim:").append(r.dim != null && !r.dim.isBlank() ? r.dim : "minecraft:overworld");
+        if (r.color != 0) {
+            sb.append(String.format(Locale.ROOT, ", color:#%06X", r.color & 0xFFFFFF));
+        }
+        sb.append(", fill:").append(r.filled ? "1" : "0");
+        if (r.description != null && !r.description.isBlank()) {
+            String safeDesc = r.description.replace(',', ' ').replace(':', ' ').trim();
+            if (safeDesc.length() > 32) safeDesc = safeDesc.substring(0, 32);
+            sb.append(", desc:").append(safeDesc);
+        }
+        if (r.pts != null && r.pts.length >= 6) {
+            double[] pts = simplifyPointsForShare(r.pts, 12);
+            sb.append(", pts:").append(encodePoints(pts));
+        }
+        if (senderName != null && !senderName.isBlank()) {
+            sb.append(", sharedBy:").append(senderName);
+        }
+        sb.append(", sharedWith:").append(targetPlayer != null && !targetPlayer.isBlank() ? targetPlayer : "*");
+        sb.append("]");
+        return sb.toString();
+    }
+
+    public static double[] simplifyPointsForShare(double[] pts, int maxPoints) {
+        int n = pts.length / 2;
+        if (n <= maxPoints) return pts;
+        double[] out = new double[maxPoints * 2];
+        for (int i = 0; i < maxPoints; i++) {
+            int src = (int) Math.round((double) i * (n - 1) / (maxPoints - 1));
+            out[i * 2] = pts[src * 2];
+            out[i * 2 + 1] = pts[src * 2 + 1];
+        }
+        return out;
+    }
+
+    public static String encodePoints(double[] pts) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < pts.length; i += 2) {
+            if (i > 0) sb.append(';');
+            sb.append((int) Math.round(pts[i])).append('_').append((int) Math.round(pts[i + 1]));
+        }
+        return sb.toString();
+    }
+
+    public static double[] parsePoints(String s) {
+        if (s == null || s.isBlank()) return new double[0];
+        try {
+            String[] pairs = s.split(";");
+            double[] pts = new double[pairs.length * 2];
+            for (int i = 0; i < pairs.length; i++) {
+                String[] xy = pairs[i].split("_");
+                pts[i * 2] = Double.parseDouble(xy[0]);
+                pts[i * 2 + 1] = Double.parseDouble(xy[1]);
+            }
+            return pts;
+        } catch (Exception e) {
+            return new double[0];
+        }
+    }
+
+    private static double[] defaultBox(double cx, double cz) {
+        return new double[]{cx - 16, cz - 16, cx + 16, cz - 16, cx + 16, cz + 16, cx - 16, cz + 16};
     }
 
     public static ParsedWaypoint parse(String raw) {
@@ -101,6 +193,15 @@ public final class WaypointShare {
                     case "icon", "suffix" -> wp.icon = v;
                     case "sharedby" -> wp.sharedBy = v;
                     case "sharedwith" -> wp.sharedWith = v;
+                    case "type" -> {
+                        if ("region".equalsIgnoreCase(v)) wp.isRegion = true;
+                    }
+                    case "desc", "description" -> wp.description = v;
+                    case "fill", "filled" -> wp.filled = !"0".equals(v) && !"false".equalsIgnoreCase(v);
+                    case "pts", "points" -> {
+                        wp.isRegion = true;
+                        wp.pts = parsePoints(v);
+                    }
                 }
             } catch (Exception ignored) {
             }
@@ -190,6 +291,50 @@ public final class WaypointShare {
 
     private static Component buildWaypointComponent(ParsedWaypoint wp, String raw) {
         MutableComponent comp = Component.empty();
+
+        if (wp.isRegion) {
+            String label = wp.name != null && !wp.name.isBlank() ? wp.name : T.s("region.title");
+            String coords = wp.x + ", " + wp.z;
+            MutableComponent tag = Component.literal("⬡ " + label + " [" + coords + "]");
+            int tagColor = wp.color != 0 ? wp.color : 0xFFE08A2E;
+            StringBuilder hb = new StringBuilder(label).append("\n").append(coords).append("\n").append(wp.dim);
+            if (wp.pts != null && wp.pts.length >= 6) {
+                hb.append("\n").append(T.s("region.points", wp.pts.length / 2));
+            }
+            if (wp.description != null && !wp.description.isBlank()) {
+                hb.append("\n").append(wp.description);
+            }
+            if (wp.sharedBy != null && !wp.sharedBy.isBlank()) {
+                hb.append("\n").append(T.s("marker.share.by", wp.sharedBy));
+            }
+            tag.withStyle(style -> style
+                    .withColor(tagColor)
+                    .withHoverEvent(new HoverEvent.ShowText(Component.literal(hb.toString())))
+                    .withClickEvent(new ClickEvent.RunCommand("/atlasmapViewRegion " + raw))
+            );
+            comp.append(tag);
+            comp.append(Component.literal(" "));
+
+            MutableComponent addBtn = Component.literal("[" + T.s("marker.share.add") + "]");
+            addBtn.withStyle(style -> style
+                    .withColor(0x55FF55)
+                    .withHoverEvent(new HoverEvent.ShowText(T.tr("region.share.add_tip")))
+                    .withClickEvent(new ClickEvent.RunCommand("/atlasmapAddRegion " + raw))
+            );
+            comp.append(addBtn);
+            comp.append(Component.literal(" "));
+
+            MutableComponent viewBtn = Component.literal("[" + T.s("marker.share.view") + "]");
+            viewBtn.withStyle(style -> style
+                    .withColor(0x55FFFF)
+                    .withHoverEvent(new HoverEvent.ShowText(T.tr("region.share.view_tip")))
+                    .withClickEvent(new ClickEvent.RunCommand("/atlasmapViewRegion " + raw))
+            );
+            comp.append(viewBtn);
+
+            return comp;
+        }
+
         String label = wp.name != null && !wp.name.isBlank() ? wp.name : T.s("marker.unnamed");
         String coords = wp.x + ", " + wp.y + ", " + wp.z;
 
@@ -232,10 +377,12 @@ public final class WaypointShare {
         String cmd = command.trim();
         if (cmd.startsWith("/")) cmd = cmd.substring(1);
 
-        boolean isAdd = cmd.startsWith("voxelmapAddWaypoint") || cmd.startsWith("atlasmapAddWaypoint");
-        boolean isView = cmd.startsWith("atlasmapViewWaypoint") || cmd.startsWith("voxelmapHighlightWaypoint") || cmd.startsWith("atlasmapHighlightWaypoint");
+        boolean isAddRegion = cmd.startsWith("atlasmapAddRegion");
+        boolean isViewRegion = cmd.startsWith("atlasmapViewRegion");
+        boolean isAddMarker = cmd.startsWith("voxelmapAddWaypoint") || cmd.startsWith("atlasmapAddWaypoint");
+        boolean isViewMarker = cmd.startsWith("atlasmapViewWaypoint") || cmd.startsWith("voxelmapHighlightWaypoint") || cmd.startsWith("atlasmapHighlightWaypoint");
 
-        if (!isAdd && !isView) {
+        if (!isAddRegion && !isViewRegion && !isAddMarker && !isViewMarker) {
             return false;
         }
 
@@ -246,13 +393,89 @@ public final class WaypointShare {
 
         Minecraft mc = Minecraft.getInstance();
         mc.execute(() -> {
-            if (isAdd) {
+            if (isAddRegion || (isAddMarker && wp.isRegion)) {
+                addRegion(wp);
+            } else if (isViewRegion || (isViewMarker && wp.isRegion)) {
+                viewRegion(wp);
+            } else if (isAddMarker) {
                 addWaypoint(wp);
             } else {
                 viewWaypoint(wp);
             }
         });
         return true;
+    }
+
+    public static void addRegion(ParsedWaypoint wp) {
+        MapSession session = MapManager.live();
+        if (session == null) return;
+
+        String dim = wp.dim != null && !wp.dim.isBlank() ? wp.dim : (MapManager.liveDim() != null ? MapManager.liveDim() : "minecraft:overworld");
+        List<Region> regions = session.regions(dim);
+
+        Region existing = null;
+        for (Region r : regions) {
+            if (r.dim.equals(dim) && r.name.equalsIgnoreCase(wp.name)) {
+                existing = r;
+                break;
+            }
+        }
+
+        double[] pts = (wp.pts != null && wp.pts.length >= 6) ? wp.pts : defaultBox(wp.x, wp.z);
+
+        if (existing != null) {
+            if (wp.color != 0) existing.color = wp.color;
+            existing.filled = wp.filled;
+            existing.pts = pts;
+            if (wp.description != null && !wp.description.isBlank()) existing.description = wp.description;
+            session.saveRegions();
+            notifyPlayer(T.s("region.share.updated", existing.name));
+        } else {
+            Region r = new Region();
+            r.name = wp.name != null && !wp.name.isBlank() ? wp.name : T.s("region.title");
+            r.color = wp.color != 0 ? wp.color : 0xFFE08A2E;
+            r.dim = dim;
+            r.filled = wp.filled;
+            r.description = wp.description != null ? wp.description : "";
+            r.pts = pts;
+            regions.add(r);
+            session.saveRegions();
+            notifyPlayer(T.s("region.share.added", r.name));
+        }
+    }
+
+    public static void viewRegion(ParsedWaypoint wp) {
+        Minecraft mc = Minecraft.getInstance();
+        MapSession session = MapManager.live();
+        if (session == null) return;
+
+        String dim = wp.dim != null && !wp.dim.isBlank() ? wp.dim : (MapManager.liveDim() != null ? MapManager.liveDim() : "minecraft:overworld");
+        List<Region> regions = session.regions(dim);
+
+        Region target = null;
+        for (Region r : regions) {
+            if (r.dim.equals(dim) && r.name.equalsIgnoreCase(wp.name)) {
+                target = r;
+                break;
+            }
+        }
+
+        if (target == null) {
+            target = new Region();
+            target.name = wp.name != null && !wp.name.isBlank() ? wp.name : T.s("region.title");
+            target.dim = dim;
+            target.color = wp.color != 0 ? wp.color : 0xFFE08A2E;
+            target.filled = wp.filled;
+            target.description = wp.description != null ? wp.description : "";
+            target.pts = (wp.pts != null && wp.pts.length >= 6) ? wp.pts : defaultBox(wp.x, wp.z);
+        }
+
+        MapScreen screen = MapScreen.openLive(mc);
+        if (screen != null) {
+            screen.showDimension(dim);
+            screen.showRegion(target);
+            notifyPlayer(T.s("region.share.showing", target.name));
+        }
     }
 
     public static void addWaypoint(ParsedWaypoint wp) {

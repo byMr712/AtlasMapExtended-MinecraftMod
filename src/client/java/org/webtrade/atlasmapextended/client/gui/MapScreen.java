@@ -178,6 +178,7 @@ public class MapScreen extends Screen {
     private Region colorRegion;
     private EditBox iconSearch;
     private Marker shareMarker;
+    private Region shareRegion;
     private EditBox shareCommentBox;
     private double sharePlayerScroll;
 
@@ -290,6 +291,13 @@ public class MapScreen extends Screen {
     /** Selects a marker, centers the map on it and shows its info panel. */
     public void showMarker(Marker m) {
         openView(m, true);
+    }
+
+    /** Selects a region, centers the map on it and shows its info panel. */
+    public void showRegion(Region r) {
+        if (r == null) return;
+        openRegionView(r);
+        centerOn(selected);
     }
 
     private boolean clean;
@@ -2414,6 +2422,18 @@ public class MapScreen extends Screen {
 
     private void openShare(Marker m) {
         shareMarker = m;
+        shareRegion = null;
+        sharePlayerScroll = 0;
+        overlay = Overlay.SHARE;
+        if (shareCommentBox != null) {
+            shareCommentBox.setValue("");
+            setFocused(shareCommentBox);
+        }
+    }
+
+    private void openShareRegion(Region r) {
+        shareRegion = r;
+        shareMarker = regionProxy(r);
         sharePlayerScroll = 0;
         overlay = Overlay.SHARE;
         if (shareCommentBox != null) {
@@ -2423,7 +2443,7 @@ public class MapScreen extends Screen {
     }
 
     private void drawShareOverlay(GuiGraphicsExtractor g, int mx, int my) {
-        if (shareMarker == null) {
+        if (shareMarker == null && shareRegion == null) {
             overlay = Overlay.NONE;
             return;
         }
@@ -2440,14 +2460,21 @@ public class MapScreen extends Screen {
         hit(ox, oy, ow, oh, () -> {});
         closeButton(g, mx, my, ox + ow - 18, oy + 5, () -> overlay = Overlay.NONE);
 
-        Paper.title(g, font, T.s(regionMode ? "region.share.title" : "marker.share.title"), ox + ow / 2, oy + 8);
+        boolean isReg = shareRegion != null;
+        Paper.title(g, font, T.s(isReg ? "region.share.title" : "marker.share.title"), ox + ow / 2, oy + 8);
 
         int cx = ox + 12;
         int cw = ow - 24;
         int y = oy + 22;
 
-        String name = shareMarker.name.isBlank() ? (regionMode ? T.s("region.title") : T.s("marker.unnamed")) : shareMarker.name;
-        String preview = name + " (" + shareMarker.x + ", " + shareMarker.y + ", " + shareMarker.z + ")";
+        String icon = isReg ? "⬡ " : "📍 ";
+        String name = isReg
+                ? (shareRegion.name.isBlank() ? T.s("region.title") : shareRegion.name)
+                : (shareMarker.name.isBlank() ? T.s("marker.unnamed") : shareMarker.name);
+        String coords = isReg
+                ? Math.round(regionCenterX(shareRegion)) + ", " + Math.round(regionCenterZ(shareRegion))
+                : shareMarker.x + ", " + shareMarker.y + ", " + shareMarker.z;
+        String preview = icon + name + " (" + coords + ")";
         g.text(font, font.plainSubstrByWidth(preview, cw), cx, y, Paper.INK, false);
         y += 12;
 
@@ -2468,7 +2495,7 @@ public class MapScreen extends Screen {
         boolean hAll = overlay == Overlay.SHARE && Paper.inside(mx, my, cx, y, cw, 16);
         Paper.iconTextButton(g, font, Paper.tool("globe"), T.tr("marker.share.everyone"), cx, y, cw, 16, hAll, true);
         hit(cx, y, cw, 16, () -> {
-            sendShare(shareMarker, "*", false);
+            sendShare("*", false);
             overlay = Overlay.NONE;
         });
         y += 20;
@@ -2478,7 +2505,7 @@ public class MapScreen extends Screen {
         boolean hCopy = overlay == Overlay.SHARE && Paper.inside(mx, my, cx, y, hw, 16);
         Paper.iconTextButton(g, font, Paper.tool("quill"), T.tr("marker.share.copy"), cx, y, hw, 16, hCopy, true);
         hit(cx, y, hw, 16, () -> {
-            copyShare(shareMarker);
+            copyShare();
             overlay = Overlay.NONE;
         });
 
@@ -2525,7 +2552,7 @@ public class MapScreen extends Screen {
                         }
                         g.text(font, pname, cx + 6, ry + 3, hr ? Paper.GOLD : Paper.INK, false);
                         hit(cx + 2, ry, cw - 4, rowH - 1, () -> {
-                            sendShare(shareMarker, pname, true);
+                            sendShare(pname, true);
                             overlay = Overlay.NONE;
                         });
                     }
@@ -2536,31 +2563,37 @@ public class MapScreen extends Screen {
         }
     }
 
-    private void sendShare(Marker m, String target, boolean whisper) {
+    private void sendShare(String target, boolean whisper) {
         Minecraft mc = Minecraft.getInstance();
         String sender = mc.player != null ? mc.player.getGameProfile().name() : "";
-        String shareStr = WaypointShare.toShareString(m, sender, target);
+        boolean isReg = shareRegion != null;
+        String shareStr = isReg
+                ? WaypointShare.toRegionShareString(shareRegion, sender, target)
+                : WaypointShare.toShareString(shareMarker, sender, target);
         String comment = shareCommentBox != null ? shareCommentBox.getValue().trim() : "";
         String fullMsg = comment.isEmpty() ? shareStr : comment + " " + shareStr;
         if (mc.player != null && mc.player.connection != null) {
             if (whisper) {
                 mc.player.connection.sendCommand("msg " + target + " " + fullMsg);
-                WaypointShare.notifyPlayer(T.s(regionMode ? "region.share.sent_to" : "marker.share.sent_to", target));
+                WaypointShare.notifyPlayer(T.s(isReg ? "region.share.sent_to" : "marker.share.sent_to", target));
             } else {
                 mc.player.connection.sendChat(fullMsg);
-                WaypointShare.notifyPlayer(T.s(regionMode ? "region.share.sent" : "marker.share.sent"));
+                WaypointShare.notifyPlayer(T.s(isReg ? "region.share.sent" : "marker.share.sent"));
             }
         }
     }
 
-    private void copyShare(Marker m) {
+    private void copyShare() {
         Minecraft mc = Minecraft.getInstance();
         String sender = mc.player != null ? mc.player.getGameProfile().name() : "";
-        String shareStr = WaypointShare.toShareString(m, sender, "*");
+        boolean isReg = shareRegion != null;
+        String shareStr = isReg
+                ? WaypointShare.toRegionShareString(shareRegion, sender, "*")
+                : WaypointShare.toShareString(shareMarker, sender, "*");
         String comment = shareCommentBox != null ? shareCommentBox.getValue().trim() : "";
         String fullMsg = comment.isEmpty() ? shareStr : comment + " " + shareStr;
         mc.keyboardHandler.setClipboard(fullMsg);
-        WaypointShare.notifyPlayer(T.s(regionMode ? "region.share.copied" : "marker.share.copied"));
+        WaypointShare.notifyPlayer(T.s(isReg ? "region.share.copied" : "marker.share.copied"));
     }
 
     private void drawDims(GuiGraphicsExtractor g, int mx, int my) {
@@ -3595,7 +3628,7 @@ public class MapScreen extends Screen {
         if (h1L) {
             tooltip = T.tr("button.share_tip");
         }
-        hit(cx, y1, bw, 16, () -> openShare(selected != null ? selected : regionProxy(r)));
+        hit(cx, y1, bw, 16, () -> openShareRegion(r));
         boolean h1R = overlay == Overlay.NONE && Paper.inside(mx, my, cx + bw + 4, y1, bw, 16);
         Paper.iconTextButton(g, font, Paper.tool("gear"), T.tr("button.configure"), cx + bw + 4, y1, bw, 16, h1R, true);
         if (h1R) {
@@ -3876,7 +3909,7 @@ public class MapScreen extends Screen {
         int key = e.key();
         if (overlay == Overlay.SHARE) {
             if (key == InputConstants.KEY_RETURN || key == InputConstants.KEY_NUMPADENTER) {
-                sendShare(shareMarker, "*", false);
+                sendShare("*", false);
                 overlay = Overlay.NONE;
             } else if (e.isEscape()) {
                 overlay = Overlay.NONE;

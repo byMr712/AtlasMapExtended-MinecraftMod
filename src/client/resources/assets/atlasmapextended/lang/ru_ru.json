@@ -327,5 +327,10 @@
   "atlasmapextended.region.share.title": "Поделиться районом",
   "atlasmapextended.region.share.sent": "Район отправлен в чат",
   "atlasmapextended.region.share.sent_to": "Район отправлен игроку %s",
-  "atlasmapextended.region.share.copied": "Район скопирован в буфер"
+  "atlasmapextended.region.share.copied": "Район скопирован в буфер",
+  "atlasmapextended.region.share.add_tip": "Нажмите, чтобы добавить район в Атлас",
+  "atlasmapextended.region.share.view_tip": "Нажмите, чтобы показать район на карте",
+  "atlasmapextended.region.share.added": "Район «%s» добавлен на карту",
+  "atlasmapextended.region.share.updated": "Район «%s» обновлен",
+  "atlasmapextended.region.share.showing": "Показ района «%s»"
 }
