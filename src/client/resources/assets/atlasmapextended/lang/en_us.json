@@ -323,5 +323,9 @@
   "atlasmapextended.marker.share.view_tip": "Click to show on map",
   "atlasmapextended.marker.share.added": "Marker “%s” added to map",
   "atlasmapextended.marker.share.updated": "Marker “%s” updated",
-  "atlasmapextended.marker.share.by": "Shared by: %s"
+  "atlasmapextended.marker.share.by": "Shared by: %s",
+  "atlasmapextended.region.share.title": "Share Region",
+  "atlasmapextended.region.share.sent": "Region shared to chat",
+  "atlasmapextended.region.share.sent_to": "Region sent to %s",
+  "atlasmapextended.region.share.copied": "Region copied to clipboard"
 }
