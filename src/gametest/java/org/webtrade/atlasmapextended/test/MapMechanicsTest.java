@@ -426,15 +426,23 @@ public class MapMechanicsTest implements FabricClientGameTest {
         r.name = "Northern Outpost";
         r.dim = "minecraft:overworld";
         r.color = 0x00FF88;
+        r.description = "Main fortress";
+        r.filled = true;
         r.pts = new double[]{100, 100, 200, 100, 200, 200, 100, 200};
-        Marker rProxy = new Marker();
-        rProxy.name = r.name;
-        rProxy.dim = r.dim;
-        rProxy.color = r.color;
-        rProxy.x = 150;
-        rProxy.y = 64;
-        rProxy.z = 150;
-        String regionShare = WaypointShare.toShareString(rProxy, "Player1", "*");
-        check(regionShare.contains("name:Northern Outpost") && regionShare.contains("x:150") && regionShare.contains("z:150"), "region share format");
+
+        String regionShare = WaypointShare.toRegionShareString(r, "Player1", "*");
+        check(regionShare.contains("name:Northern Outpost") && regionShare.contains("type:region"), "region serialize type");
+        check(regionShare.contains("pts:100_100;200_100;200_200;100_200"), "region serialize points");
+
+        WaypointShare.ParsedWaypoint rWp = WaypointShare.parse(regionShare);
+        check(rWp != null && rWp.isRegion, "region parsed as region");
+        check("Northern Outpost".equals(rWp.name), "region parse name");
+        check(rWp.pts != null && rWp.pts.length == 8, "region parse points length");
+        check(rWp.pts[0] == 100 && rWp.pts[1] == 100, "region parse first point");
+        check(rWp.color == 0x00FF88, "region parse color");
+        check("Main fortress".equals(rWp.description), "region parse description");
+
+        net.minecraft.network.chat.Component regChat = WaypointShare.modifyChatMessage(net.minecraft.network.chat.Component.literal("Check " + regionShare));
+        check(regChat != null && regChat.getString().contains("⬡ Northern Outpost"), "region chat component format");
     }
 }
