@@ -20,6 +20,7 @@ import org.webtrade.atlasmapextended.client.data.Marker;
 import org.webtrade.atlasmapextended.client.data.ModConfig;
 import org.webtrade.atlasmapextended.client.data.Region;
 import org.webtrade.atlasmapextended.client.data.Storage;
+import org.webtrade.atlasmapextended.client.data.WorldMeta;
 import org.webtrade.atlasmapextended.client.data.Stroke;
 import org.webtrade.atlasmapextended.client.map.MapLayer;
 import net.minecraft.client.multiplayer.ClientPacketListener;
@@ -86,7 +87,7 @@ public class MapScreen extends Screen {
 
     private enum Panel { NONE, VIEW, EDIT }
 
-    private enum Overlay { NONE, ICONS, COLOR, PICKER, VIEWER, CONFIRM, DIMS, REGION, REGION_COLOR, SHARE }
+    private enum Overlay { NONE, ICONS, COLOR, PICKER, VIEWER, CONFIRM, DIMS, MAPS, REGION, REGION_COLOR, SHARE }
 
     private record Hit(int x, int y, int w, int h, Runnable left, Runnable right) {
     }
@@ -95,7 +96,7 @@ public class MapScreen extends Screen {
     }
 
     private final Screen parent;
-    private final MapSession session;
+    private MapSession session;
     private final boolean ownsSession;
     private final MapView view = new MapView();
     private final ModConfig cfg = ModConfig.get();
@@ -563,6 +564,7 @@ public class MapScreen extends Screen {
                 case VIEWER -> drawViewer(g, mx, my);
                 case CONFIRM -> drawConfirm(g, mx, my);
                 case DIMS -> drawDims(g, mx, my);
+                case MAPS -> drawMapSelect(g, mx, my);
                 case REGION -> drawRegionEditor(g, mx, my);
                 default -> {
                 }
@@ -873,6 +875,10 @@ public class MapScreen extends Screen {
         items.add(new Object[]{"zoom_in", T.tr("tool.zoom_in"), false, (Runnable) () -> zoomBy(1.5f, width / 2.0, height / 2.0)});
         items.add(new Object[]{"zoom_out", T.tr("tool.zoom_out"), false, (Runnable) () -> zoomBy(1 / 1.5f, width / 2.0, height / 2.0)});
         items.add(new Object[]{"globe", T.tr("tool.dims"), overlay == Overlay.DIMS, (Runnable) () -> overlay = Overlay.DIMS});
+        items.add(new Object[]{"folder", T.tr("tool.switch_map"), overlay == Overlay.MAPS, (Runnable) () -> {
+            overlay = overlay == Overlay.MAPS ? Overlay.NONE : Overlay.MAPS;
+            scrollMaps = 0;
+        }});
         items.add(new Object[]{"gear", T.tr("tool.settings"), false, (Runnable) this::openSettings});
         items.add(new Object[]{"close", T.tr("tool.close", keyName(ModKeys.OPEN_MAP)), false, (Runnable) this::onClose});
 
@@ -3850,7 +3856,7 @@ public class MapScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mx, double my, double sx, double sy) {
-        if (overlay != Overlay.NONE && overlay != Overlay.PICKER && overlay != Overlay.ICONS) {
+        if (overlay != Overlay.NONE && overlay != Overlay.PICKER && overlay != Overlay.ICONS && overlay != Overlay.MAPS) {
             return true;
         }
         for (int i = scrolls.size() - 1; i >= 0; i--) {
@@ -4055,5 +4061,164 @@ public class MapScreen extends Screen {
 
     private static Component keyName(net.minecraft.client.KeyMapping k) {
         return k.getTranslatedKeyMessage();
+    }
+
+    private double scrollMaps;
+
+    private void drawMapSelect(GuiGraphics g, int mx, int my) {
+        blocker(() -> overlay = Overlay.NONE);
+        int ow = 260;
+        int oh = Math.min(height - 30, 290);
+        int ox = (width - ow) / 2;
+        int oy = (height - oh) / 2;
+        Paper.panel(g, ox, oy, ow, oh);
+        ui(ox, oy, ow, oh);
+        hit(ox, oy, ow, oh, () -> {
+        });
+
+        Paper.title(g, font, T.s("map.select_title"), ox + ow / 2, oy + 8);
+        closeButton(g, mx, my, ox + ow - 18, oy + 5, () -> overlay = Overlay.NONE);
+
+        Minecraft mc = Minecraft.getInstance();
+        String defaultKey = MapManager.resolveDefaultServerKey(mc);
+        boolean hasOverride = defaultKey != null && ModConfig.get().serverMapOverrides.containsKey(defaultKey);
+
+        int btnY = oy + oh - 24;
+        int btnH = 16;
+        if (session.isLive() && defaultKey != null) {
+            int bW = hasOverride ? (ow - 20) / 2 : (ow - 16);
+            boolean hNew = Paper.inside(mx, my, ox + 8, btnY, bW, btnH);
+            Paper.iconTextButton(g, font, Paper.tool("plus"), T.tr("map.new_server_map"), ox + 8, btnY, bW, btnH, hNew, true);
+            hit(ox + 8, btnY, bW, btnH, this::createNewServerMap);
+
+            if (hasOverride) {
+                int rx = ox + 8 + bW + 4;
+                boolean hReset = Paper.inside(mx, my, rx, btnY, bW, btnH);
+                Paper.iconTextButton(g, font, Paper.tool("undo"), T.tr("map.reset_override"), rx, btnY, bW, btnH, hReset, true);
+                hit(rx, btnY, bW, btnH, () -> switchMapTo(null));
+            }
+        }
+
+        String curName = session.meta.name != null && !session.meta.name.isBlank() ? session.meta.name : session.meta.id;
+        String curInfo = T.s("map.current_map", font.plainSubstrByWidth(curName, ow - 40));
+        g.drawString(font, curInfo, ox + 10, oy + 22, Paper.INK_SOFT, false);
+
+        int top = oy + 34;
+        int bottom = (session.isLive() && defaultKey != null) ? btnY - 6 : oy + oh - 8;
+        Paper.separator(g, ox + 8, top - 2, ow - 16);
+
+        List<WorldMeta> worlds = Storage.listWorlds();
+        String activeId = session.meta.id;
+        worlds.sort((a, b) -> {
+            if (a.id.equals(activeId)) return -1;
+            if (b.id.equals(activeId)) return 1;
+            if (a.isServer() != b.isServer()) return a.isServer() ? -1 : 1;
+            return Long.compare(b.lastPlayed, a.lastPlayed);
+        });
+
+        int rowH = 26;
+        int totalH = worlds.size() * rowH;
+        double maxScroll = Math.max(0, totalH - (bottom - top));
+        scrollMaps = Math.max(0, Math.min(maxScroll, scrollMaps));
+        scroll(ox + 8, top, ow - 16, bottom - top, d -> scrollMaps -= d * rowH * 1.5);
+
+        g.enableScissor(ox + 6, top, ox + ow - 6, bottom);
+        int y = top + 2 - (int) scrollMaps;
+        for (WorldMeta w : worlds) {
+            if (y + rowH >= top && y <= bottom) {
+                boolean active = w.id.equals(activeId);
+                boolean hover = Paper.inside(mx, my, ox + 8, y, ow - 16, rowH - 2) && my >= top && my < bottom;
+
+                if (active) {
+                    g.fill(ox + 8, y, ox + ow - 8, y + rowH - 2, Paper.a(Paper.GOLD, 0x40));
+                    Paper.outline(g, ox + 8, y, ow - 16, rowH - 2, Paper.GOLD);
+                } else if (hover) {
+                    g.fill(ox + 8, y, ox + ow - 8, y + rowH - 2, 0x25FFFFFF);
+                    Paper.outline(g, ox + 8, y, ow - 16, rowH - 2, Paper.INK_SOFT);
+                }
+
+                String icon = w.isServer() ? "globe" : "map";
+                Paper.icon(g, Paper.tool(icon), ox + 12, y + 4, 16);
+
+                String name = (w.name != null && !w.name.isBlank()) ? w.name : w.id;
+                name = font.plainSubstrByWidth(name, ow - 90);
+                g.drawString(font, name, ox + 32, y + 3, active ? Paper.GOLD : Paper.INK, false);
+
+                String sub = (w.address != null && !w.address.isBlank()) ? w.address : w.id;
+                sub = font.plainSubstrByWidth(sub, ow - 90);
+                g.drawString(font, sub, ox + 32, y + 13, Paper.INK_SOFT, false);
+
+                if (active) {
+                    String actStr = T.s("map.active");
+                    g.drawString(font, actStr, ox + ow - 14 - font.width(actStr), y + 8, 0xFF44AA44, false);
+                }
+
+                int clipY = Math.max(y, top);
+                int clipH = Math.min(y + rowH - 2, bottom) - clipY;
+                if (clipH > 0 && !active) {
+                    hit(ox + 8, clipY, ow - 16, clipH, () -> {
+                        switchMapTo(w.id);
+                        overlay = Overlay.NONE;
+                        Paper.click();
+                    });
+                }
+            }
+            y += rowH;
+        }
+        g.disableScissor();
+    }
+
+    private void switchMapTo(String targetId) {
+        if (session.isLive()) {
+            MapManager.switchLive(targetId);
+            session = MapManager.live();
+        } else if (targetId != null) {
+            WorldMeta meta = Storage.readJson(Storage.worldDir(targetId).resolve("meta.json"), WorldMeta.class, null);
+            if (meta != null) {
+                session.close();
+                session = MapSession.open(meta);
+            }
+        }
+        if (session != null) {
+            selected = null;
+            working = null;
+            panel = Panel.NONE;
+            selectedRegion = null;
+            editingRegion = null;
+            dim = session.meta.lastDim;
+            view.cx = session.meta.lastX;
+            view.cz = session.meta.lastZ;
+            if (session.isLive()) {
+                centerOnPlayer();
+            }
+            WaypointShare.notifyPlayer(T.s("map.switched", session.meta.name != null && !session.meta.name.isBlank() ? session.meta.name : session.meta.id));
+        }
+    }
+
+    private void createNewServerMap() {
+        Minecraft mc = Minecraft.getInstance();
+        String defaultKey = MapManager.resolveDefaultServerKey(mc);
+        if (defaultKey == null) {
+            return;
+        }
+        int idx = 2;
+        String newId = defaultKey + "_" + idx;
+        while (Files.exists(Storage.worldDir(newId))) {
+            idx++;
+            newId = defaultKey + "_" + idx;
+        }
+        WorldMeta meta = new WorldMeta();
+        meta.id = newId;
+        meta.type = WorldMeta.SERVER;
+        meta.address = defaultKey.startsWith("server_") ? defaultKey.substring(7) : defaultKey;
+        meta.name = (mc.getCurrentServer() != null && mc.getCurrentServer().name != null && !mc.getCurrentServer().name.isBlank())
+                ? mc.getCurrentServer().name + " #" + idx
+                : meta.address + " #" + idx;
+        meta.lastPlayed = System.currentTimeMillis();
+        Storage.writeJson(Storage.worldDir(newId).resolve("meta.json"), meta);
+
+        switchMapTo(newId);
+        overlay = Overlay.NONE;
+        Paper.click();
     }
 }
