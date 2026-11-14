@@ -31,6 +31,10 @@ public class ItemInHandRendererMixin {
             boolean inItemFrame,
             int light
     ) {
+        if (!org.webtrade.atlasmapextended.client.data.ModConfig.get().customMapStyle) {
+            mapRenderer.render(pose, buffer, mapId, data, inItemFrame, light);
+            return;
+        }
         ResourceLocation texture = null;
         if (data != null && mapId != null) {
             texture = HeldMapTextures.get(mapId, data);
