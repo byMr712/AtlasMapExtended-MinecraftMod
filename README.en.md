@@ -48,7 +48,7 @@ A client-side mod full-screen world map and minimap, markers with icons, descrip
 - **Drawing on the map** (`G`): pen, line, rectangle, circle, and eraser. 60 colours and undo are available.
 - **Teleport to marker**: enabled in settings. Works if commands are allowed (cheats in singleplayer or operator permissions on a server).
 - **Settings** (gear button on the map and in the main menu). Choose from 8 designs: Papyrus, Stone, Deepslate, Light, Dark, Oak, Nether, End.
-- **Map Atlas** in the main menu: maps, markers, and screenshots are stored separately for each server and world.
+- **Map Atlas** in the main menu and **on-the-fly map switcher** (folder button on the map): quickly switch between saved maps, create separate maps for servers, and safely archive maps on world deletion or seed change.
 - Interface in Russian and English.
 
 ## Installation
@@ -79,9 +79,39 @@ The mod is client-side only; no need to install it on a server.
 
 All keys can be remapped in the standard Minecraft controls settings.
 
-## Data Storage
+## Map and Data Storage
 
-`.minecraft/atlasmapextended/worlds/<id>/`: map tiles, markers (`markers.json`), drawings (`drawings.json`), and marker screenshots. Settings are in `.minecraft/config/atlasmapextended.json`.
+All mod data is stored independently in `.minecraft/atlasmapextended/`:
+- **Singleplayer worlds**: `.minecraft/atlasmapextended/worlds/local_<world_folder>/`
+- **Multiplayer servers**: `.minecraft/atlasmapextended/worlds/server_<address_hash>/`
+- **Inside each world folder**:
+  - `tiles/` — explored map tiles for each dimension (`overworld`, `the_nether`, `the_end`);
+  - `markers.json` — saved markers, colors, coordinates, icons, and descriptions;
+  - `regions.json` — created regions and areas;
+  - `drawings.json` — hand drawings made on the map;
+  - `meta.json` — world or server name, seed, and unique map identifier;
+  - screenshots attached to markers.
+- **Global configuration**: `.minecraft/config/atlasmapextended.json`.
+
+> [!NOTE]
+> **Auto-migration from v1.0:** if you previously used version 1.0 (with the `.minecraft/atlasmap/` folder), version 1.1+ automatically and safely copies all your maps, markers, and settings into the new `atlasmapextended` directory upon first launch.
+
+## Map Switcher and Archiving
+
+The full-screen map toolbar (key `M`) features a folder icon button — **"Switch Map"**:
+
+### 1. Switching Maps In-Game
+- The menu lists all saved world and server maps (the active map is marked with a checkmark).
+- Click any map in the list to switch to it immediately without leaving the game.
+- **"+ New Map for Server"**: if you play on a server that started a new season/wipe, or has multiple sub-worlds/hubs on the same IP address, click this button to create a clean, independent map for that server.
+- **"Reset to Default"**: resets the override back to automatic map detection for the current server or world.
+- Your selected map override is saved in configuration and persists across game restarts.
+
+### 2. Automatic Map Archiving
+The mod protects your maps from accidental overwrites or terrain blending:
+- **World deletion**: when you delete a singleplayer world from the Minecraft menu, the map is not permanently lost. It is automatically archived to `local_<world>_old_<timestamp>` and labeled `[Deleted World]`.
+- **World recreation or seed change**: if a world is recreated with the same folder name or a different seed, the mod detects the change, archives the previous map as `[Old Seed]`, and starts a fresh map. Old chunks and markers will never blend into the new terrain.
+- All archived maps remain safe: they can still be viewed or switched to at any time via the "Switch Map" menu.
 
 ## Building
 
