@@ -238,8 +238,8 @@ public final class WorldMarkerHud {
         ty = Math.max(4, ty);
         g.fill(tx - 4, ty - 2, tx + tw + 4, ty + 19, Paper.a(Paper.CREAM, 0xE8));
         g.outline(tx - 4, ty - 2, tw + 8, 21, Paper.a(Paper.INK, 0xA0));
-        g.text(font, name, tx, ty, Paper.INK, false);
-        g.text(font, dist, tx + (nameW - distW) / 2, ty + 10, Paper.a(Paper.INK, 0xB0), false);
+        g.text(font, name, tx + (tw - nameW) / 2, ty, Paper.INK, false);
+        g.text(font, dist, tx + (tw - distW) / 2, ty + 10, Paper.a(Paper.INK, 0xB0), false);
     }
     /** Frees icon textures that have been out of view for a while, so they load again on return. */
     private static void releaseUnused(long now) {
