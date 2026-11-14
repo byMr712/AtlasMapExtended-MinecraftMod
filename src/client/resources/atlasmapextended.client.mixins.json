@@ -11,6 +11,7 @@
     "GuiMixin",
     "KeyboardHandlerMixin",
     "LanguageManagerMixin",
+    "LevelStorageAccessMixin",
     "MinecraftMixin",
     "OptionsMixin",
     "ScreenAccessor",
