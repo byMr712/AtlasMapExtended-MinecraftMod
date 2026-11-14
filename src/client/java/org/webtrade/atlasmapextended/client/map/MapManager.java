@@ -238,9 +238,12 @@ public final class MapManager {
         return "server_" + Storage.sanitize(norm);
     }
 
-    public static String resolveDefaultServerKey(Minecraft mc) {
-        if (mc.getSingleplayerServer() != null) {
-            return null;
+    public static String resolveDefaultKey(Minecraft mc) {
+        IntegratedServer sp = mc.getSingleplayerServer();
+        if (sp != null) {
+            Path root = sp.getWorldPath(LevelResource.ROOT).toAbsolutePath().normalize();
+            String folder = root.getFileName() == null ? "world" : root.getFileName().toString();
+            return "local_" + Storage.sanitize(folder);
         }
         ServerData sd = mc.getCurrentServer();
         if (sd == null && mc.getConnection() != null) {
@@ -258,12 +261,20 @@ public final class MapManager {
         return resolveDefaultServerId(sd);
     }
 
-    
+    public static String resolveDefaultServerKey(Minecraft mc) {
+        return resolveDefaultKey(mc);
+    }
+
     public static void onDeleteSingleplayerWorld(String folder) {
         if (folder == null || folder.isBlank()) {
             return;
         }
         String worldId = "local_" + Storage.sanitize(folder);
+        ModConfig cfg = ModConfig.get();
+        if (cfg != null && cfg.serverMapOverrides != null && cfg.serverMapOverrides.containsKey(worldId)) {
+            cfg.serverMapOverrides.remove(worldId);
+            cfg.save();
+        }
         archiveWorld(worldId, "Deleted");
     }
 
@@ -324,10 +335,7 @@ public final class MapManager {
         if (sp != null) {
             Path root = sp.getWorldPath(LevelResource.ROOT).toAbsolutePath().normalize();
             String folder = root.getFileName() == null ? "world" : root.getFileName().toString();
-            meta.id = "local_" + Storage.sanitize(folder);
-            meta.name = sp.getWorldData().getLevelName();
-            meta.address = folder;
-            meta.type = WorldMeta.LOCAL;
+            String defaultId = "local_" + Storage.sanitize(folder);
 
             long currentSeed = 0L;
             try {
@@ -336,7 +344,6 @@ public final class MapManager {
                 }
             } catch (Exception ignored) {
             }
-            meta.seed = currentSeed;
 
             Path uidFile = root.resolve(".atlasmap_uid");
             String currentUid = null;
@@ -347,7 +354,7 @@ public final class MapManager {
                 }
             }
 
-            Path worldDir = Storage.worldDir(meta.id);
+            Path worldDir = Storage.worldDir(defaultId);
             WorldMeta old = Storage.readJson(worldDir.resolve("meta.json"), WorldMeta.class, null);
             boolean recreated = false;
             if (old != null) {
@@ -359,9 +366,9 @@ public final class MapManager {
             }
 
             if (recreated) {
-                archiveWorld(meta.id, "Old Seed");
+                archiveWorld(defaultId, "Old Seed");
                 if (Files.isDirectory(worldDir)) {
-                    meta.id = meta.id + "_" + (currentSeed != 0 ? Math.abs(currentSeed % 100000) : System.currentTimeMillis() % 100000);
+                    defaultId = defaultId + "_" + (currentSeed != 0 ? Math.abs(currentSeed % 100000) : System.currentTimeMillis() % 100000);
                 }
             }
 
@@ -372,6 +379,21 @@ public final class MapManager {
                 } catch (Exception ignored) {
                 }
             }
+
+            String targetId = defaultId;
+            ModConfig cfg = ModConfig.get();
+            if (cfg != null && cfg.serverMapOverrides != null && cfg.serverMapOverrides.containsKey(defaultId)) {
+                String override = cfg.serverMapOverrides.get(defaultId);
+                if (override != null && !override.isBlank() && Files.isDirectory(Storage.worldDir(override))) {
+                    targetId = override;
+                }
+            }
+
+            meta.id = targetId;
+            meta.name = sp.getWorldData().getLevelName();
+            meta.address = folder;
+            meta.type = WorldMeta.LOCAL;
+            meta.seed = currentSeed;
             meta.uid = currentUid;
         } else {
             if (sd == null && mc.getConnection() != null) {
