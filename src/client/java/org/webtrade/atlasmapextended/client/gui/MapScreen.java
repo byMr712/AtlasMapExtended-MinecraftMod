@@ -4645,8 +4645,9 @@ public class MapScreen extends Screen {
             if (isLive) {
                 MapManager.discardLive();
             } else if (session != null) {
-                session.close();
+                session.discard();
             }
+            Storage.flushIO();
 
             if (fullCopy) {
                 if (Files.isDirectory(dstDir)) {
