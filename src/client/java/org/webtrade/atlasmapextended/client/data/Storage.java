@@ -41,11 +41,81 @@ public final class Storage {
         return Minecraft.getInstance().gameDirectory.toPath().resolve("atlasmapextended");
     }
 
+    private static volatile boolean migrated = false;
+
+    public static synchronized void migrateLegacyIfPresent() {
+        if (migrated) return;
+        migrated = true;
+        try {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc == null || mc.gameDirectory == null) {
+                return;
+            }
+            Path gameDir = mc.gameDirectory.toPath();
+            Path legacyRoot = gameDir.resolve("atlasmap");
+            if (!Files.isDirectory(legacyRoot)) {
+                return;
+            }
+            Path newRoot = root();
+            Files.createDirectories(newRoot);
+
+            Path legacyConfig = legacyRoot.resolve("config.json");
+            Path newConfig = newRoot.resolve("config.json");
+            if (Files.isRegularFile(legacyConfig) && !Files.exists(newConfig)) {
+                try {
+                    Files.copy(legacyConfig, newConfig);
+                    LOG.info("Migrated legacy config from {} to {}", legacyConfig, newConfig);
+                } catch (Exception e) {
+                    LOG.warn("Failed to migrate config", e);
+                }
+            }
+
+            Path legacyWorlds = legacyRoot.resolve("worlds");
+            Path newWorlds = newRoot.resolve("worlds");
+            if (Files.isDirectory(legacyWorlds)) {
+                Files.createDirectories(newWorlds);
+                try (Stream<Path> s = Files.list(legacyWorlds)) {
+                    s.filter(Files::isDirectory).forEach(oldWorldDir -> {
+                        Path target = newWorlds.resolve(oldWorldDir.getFileName());
+                        if (!Files.exists(target)) {
+                            try {
+                                copyRecursive(oldWorldDir, target);
+                                LOG.info("Migrated legacy world from {} to {}", oldWorldDir, target);
+                            } catch (Exception e) {
+                                LOG.warn("Failed to migrate legacy world {}", oldWorldDir, e);
+                            }
+                        }
+                    });
+                }
+            }
+        } catch (Exception e) {
+            LOG.warn("Legacy migration failed", e);
+        }
+    }
+
+    public static void copyRecursive(Path src, Path dst) throws IOException {
+        if (!Files.exists(src)) return;
+        try (Stream<Path> stream = Files.walk(src)) {
+            for (Path path : (Iterable<Path>) stream::iterator) {
+                Path rel = src.relativize(path);
+                Path destPath = dst.resolve(rel);
+                if (Files.isDirectory(path)) {
+                    Files.createDirectories(destPath);
+                } else {
+                    Files.createDirectories(destPath.getParent());
+                    Files.copy(path, destPath, StandardCopyOption.REPLACE_EXISTING);
+                }
+            }
+        }
+    }
+
     public static Path worldsDir() {
+        migrateLegacyIfPresent();
         return root().resolve("worlds");
     }
 
     public static Path worldDir(String id) {
+        migrateLegacyIfPresent();
         Path root = worldsDir().toAbsolutePath().normalize();
         Path dir = root.resolve(id).toAbsolutePath().normalize();
         if (!dir.startsWith(root) || dir.equals(root)) {
@@ -134,6 +204,7 @@ public final class Storage {
 
     /** Lists all stored worlds, most recently played first. */
     public static List<WorldMeta> listWorlds() {
+        migrateLegacyIfPresent();
         List<WorldMeta> out = new ArrayList<>();
         Path dir = worldsDir();
         if (!Files.isDirectory(dir)) {
