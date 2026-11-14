@@ -21,12 +21,17 @@ public final class RegionToast {
     }
 
     public static void show(String heading, String regionName) {
-        if (ticks > 0) {
+        if (heading == null || regionName == null) {
+            return;
+        }
+        queue.removeIf(item -> regionName.equals(item[1]));
+        if (ticks > 0 && heading.equals(title) && !regionName.equals(name)) {
             if (queue.size() < MAX_QUEUE) {
                 queue.addLast(new String[]{heading, regionName});
             }
             return;
         }
+        queue.clear();
         title = heading;
         name = regionName;
         ticks = TOTAL;
