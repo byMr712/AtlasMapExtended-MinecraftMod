@@ -114,7 +114,16 @@ public class SettingsScreen extends Screen {
         hit(bx, by, bw, 16, this::done);
 
         if (tooltip != null) {
-            g.renderTooltip(font, tooltip, mx, my);
+            String tip = tooltip.getString();
+            if (tip.indexOf('\n') >= 0) {
+                List<Component> lines = new ArrayList<>();
+                for (String line : tip.split("\n", -1)) {
+                    lines.add(Component.literal(line));
+                }
+                g.renderComponentTooltip(font, lines, mx, my);
+            } else {
+                g.renderTooltip(font, tooltip, mx, my);
+            }
         }
         if (themePopup) {
             drawThemePopup(g, mx, my);
