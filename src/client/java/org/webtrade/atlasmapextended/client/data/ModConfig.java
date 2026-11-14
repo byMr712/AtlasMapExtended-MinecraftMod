@@ -35,6 +35,7 @@ public class ModConfig {
     /** Shows a "Teleport" button on markers (needs command permission). */
     public boolean teleport = false;
     public boolean markerLabels = true;
+    public java.util.Map<String, String> serverMapOverrides = new java.util.HashMap<>();
 
     private static ModConfig instance;
     private static int firstRunSizeDelay = -1;
@@ -92,6 +93,9 @@ public class ModConfig {
         deathMarkers = Math.max(0, Math.min(4, deathMarkers));
         deathMarkersCreated = Math.max(0, deathMarkersCreated);
         minimapCorner = Math.floorMod(minimapCorner, 4);
+        if (serverMapOverrides == null) {
+            serverMapOverrides = new java.util.HashMap<>();
+        }
     }
 
     public void save() {
