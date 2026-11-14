@@ -4,6 +4,7 @@
   "package": "org.webtrade.atlasmapextended.mixin.client",
   "compatibilityLevel": "JAVA_25",
   "client": [
+    "ChatComponentMixin",
     "ClientChunkCacheMixin",
     "ClientPacketListenerMixin",
     "GameRendererMixin",
