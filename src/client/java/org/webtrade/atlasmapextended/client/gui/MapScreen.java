@@ -980,10 +980,12 @@ public class MapScreen extends Screen {
         items.add(new Object[]{"zoom_in", T.tr("tool.zoom_in"), false, (Runnable) () -> zoomBy(1.5f, width / 2.0, height / 2.0)});
         items.add(new Object[]{"zoom_out", T.tr("tool.zoom_out"), false, (Runnable) () -> zoomBy(1 / 1.5f, width / 2.0, height / 2.0)});
         items.add(new Object[]{"globe", T.tr("tool.dims"), overlay == Overlay.DIMS, (Runnable) () -> overlay = Overlay.DIMS});
-        items.add(new Object[]{"folder", T.tr("tool.switch_map"), overlay == Overlay.MAPS, (Runnable) () -> {
-            overlay = overlay == Overlay.MAPS ? Overlay.NONE : Overlay.MAPS;
-            scrollMaps = 0;
-        }});
+        if (!(parent instanceof WorldsScreen)) {
+            items.add(new Object[]{"folder", T.tr("tool.switch_map"), overlay == Overlay.MAPS, (Runnable) () -> {
+                overlay = overlay == Overlay.MAPS ? Overlay.NONE : Overlay.MAPS;
+                scrollMaps = 0;
+            }});
+        }
         items.add(new Object[]{"gear", T.tr("tool.settings"), false, (Runnable) this::openSettings});
         items.add(new Object[]{"close", T.tr("tool.close", keyName(ModKeys.OPEN_MAP)), false, (Runnable) this::onClose});
 
