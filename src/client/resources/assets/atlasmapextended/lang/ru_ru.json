@@ -351,6 +351,7 @@
   "atlasmapextended.map.preview_title": "Предпросмотр: %s",
   "atlasmapextended.map.preview.bind": "Привязать карту",
   "atlasmapextended.map.preview.back": "Назад в меню карт",
+  "atlasmapextended.map.preview.back_atlas": "Назад в атлас карт",
   "atlasmapextended.map.section.locals": "Локальные миры",
   "atlasmapextended.map.section.servers": "Сервера",
   "atlasmapextended.map.section.realms": "Realms",
