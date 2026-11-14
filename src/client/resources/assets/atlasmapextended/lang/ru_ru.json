@@ -332,5 +332,12 @@
   "atlasmapextended.region.share.view_tip": "Нажмите, чтобы показать район на карте",
   "atlasmapextended.region.share.added": "Район «%s» добавлен на карту",
   "atlasmapextended.region.share.updated": "Район «%s» обновлен",
-  "atlasmapextended.region.share.showing": "Показ района «%s»"
+  "atlasmapextended.region.share.showing": "Показ района «%s»",
+  "atlasmapextended.tool.switch_map": "Сменить карту мира",
+  "atlasmapextended.map.select_title": "Выбор карты мира",
+  "atlasmapextended.map.current_map": "Текущая: %s",
+  "atlasmapextended.map.active": "[Активна]",
+  "atlasmapextended.map.switched": "Карта переключена на «%s»",
+  "atlasmapextended.map.new_server_map": "+ Новая карта",
+  "atlasmapextended.map.reset_override": "Сбросить выбор"
 }
