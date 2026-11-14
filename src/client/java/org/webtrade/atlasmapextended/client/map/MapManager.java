@@ -12,6 +12,14 @@ import org.webtrade.atlasmapextended.client.data.Storage;
 import org.webtrade.atlasmapextended.client.gui.RegionToast;
 import org.webtrade.atlasmapextended.client.gui.T;
 import org.webtrade.atlasmapextended.client.data.WorldMeta;
+import org.webtrade.atlasmapextended.client.data.ModConfig;
+
+import java.net.InetSocketAddress;
+import java.net.SocketAddress;
+import java.nio.file.Files;
+import java.util.Locale;
+import java.util.Optional;
+import java.util.stream.Stream;
 
 import java.nio.file.Path;
 import java.util.HashMap;
@@ -201,6 +209,82 @@ public final class MapManager {
         }
     }
 
+    public static String normalizeServerAddress(String ip) {
+        if (ip == null || ip.isBlank()) {
+            return "server";
+        }
+        String s = ip.trim().toLowerCase(Locale.ROOT);
+        if (s.endsWith(":25565")) {
+            s = s.substring(0, s.length() - 6);
+        }
+        return s;
+    }
+
+    public static String resolveDefaultServerId(ServerData sd) {
+        if (sd == null) {
+            return "unknown";
+        }
+        if (sd.isLan()) {
+            String raw = sd.ip != null ? sd.ip.trim().toLowerCase(Locale.ROOT) : "";
+            String host = raw.contains(":") ? raw.substring(0, raw.lastIndexOf(':')) : raw;
+            String name = sd.name != null && !sd.name.isBlank() ? sd.name : "world";
+            return "server_lan_" + Storage.sanitize(host + "_" + name);
+        }
+        if (sd.isRealm()) {
+            String name = sd.name != null && !sd.name.isBlank() ? sd.name : "realm";
+            return "server_realm_" + Storage.sanitize(name);
+        }
+        String norm = normalizeServerAddress(sd.ip);
+        return "server_" + Storage.sanitize(norm);
+    }
+
+    public static String resolveDefaultServerKey(Minecraft mc) {
+        if (mc.getSingleplayerServer() != null) {
+            return null;
+        }
+        ServerData sd = mc.getCurrentServer();
+        if (sd == null && mc.getConnection() != null) {
+            sd = mc.getConnection().getServerData();
+        }
+        if (sd == null && mc.getConnection() != null && mc.getConnection().getConnection() != null) {
+            SocketAddress sa = mc.getConnection().getConnection().getRemoteAddress();
+            if (sa instanceof InetSocketAddress isa) {
+                String host = isa.getHostString().toLowerCase(Locale.ROOT);
+                int port = isa.getPort();
+                String norm = (port == 25565 || port <= 0) ? host : host + ":" + port;
+                sd = new ServerData(norm, norm, ServerData.Type.OTHER);
+            }
+        }
+        return resolveDefaultServerId(sd);
+    }
+
+    public static void switchLive(String newWorldId) {
+        Minecraft mc = Minecraft.getInstance();
+        if (live == null || !live.isLive()) {
+            return;
+        }
+        String defaultKey = resolveDefaultServerKey(mc);
+        if (defaultKey != null) {
+            ModConfig cfg = ModConfig.get();
+            if (newWorldId == null || newWorldId.equals(defaultKey)) {
+                cfg.serverMapOverrides.remove(defaultKey);
+            } else {
+                cfg.serverMapOverrides.put(defaultKey, newWorldId);
+            }
+            cfg.save();
+        }
+        closeLive();
+        WorldMeta meta = resolveMeta(mc);
+        live = MapSession.open(meta);
+        live.live = true;
+        liveDim = null;
+        remoteView.clear();
+        remoteZoom.clear();
+        insideRegions.clear();
+        queue.clear();
+        live.saveMeta();
+    }
+
     private static WorldMeta resolveMeta(Minecraft mc) {
         WorldMeta meta = new WorldMeta();
         IntegratedServer sp = mc.getSingleplayerServer();
@@ -212,21 +296,65 @@ public final class MapManager {
             meta.name = sp.getWorldData().getLevelName();
             meta.address = folder;
             meta.type = WorldMeta.LOCAL;
-        } else if (sd != null) {
-            meta.id = "server_" + Storage.sanitize(sd.ip);
-            meta.name = sd.name;
-            meta.address = sd.ip;
-            meta.type = WorldMeta.SERVER;
         } else {
-            meta.id = "unknown";
-            meta.name = "Unknown";
+            if (sd == null && mc.getConnection() != null) {
+                sd = mc.getConnection().getServerData();
+            }
+            if (sd == null && mc.getConnection() != null && mc.getConnection().getConnection() != null) {
+                SocketAddress sa = mc.getConnection().getConnection().getRemoteAddress();
+                if (sa instanceof InetSocketAddress isa) {
+                    String host = isa.getHostString().toLowerCase(Locale.ROOT);
+                    int port = isa.getPort();
+                    String norm = (port == 25565 || port <= 0) ? host : host + ":" + port;
+                    sd = new ServerData(norm, norm, ServerData.Type.OTHER);
+                }
+            }
+            String defaultId = resolveDefaultServerId(sd);
+            String targetId = defaultId;
+
+            ModConfig cfg = ModConfig.get();
+            if (cfg != null && cfg.serverMapOverrides != null && cfg.serverMapOverrides.containsKey(defaultId)) {
+                String override = cfg.serverMapOverrides.get(defaultId);
+                if (override != null && !override.isBlank() && Files.isDirectory(Storage.worldDir(override))) {
+                    targetId = override;
+                }
+            }
+
+            if (targetId.equals(defaultId) && !Files.isDirectory(Storage.worldDir(targetId)) && sd != null) {
+                String norm = normalizeServerAddress(sd.ip);
+                String legacyPrefix = "server_" + Storage.sanitize(norm) + "_25565_";
+                Path worlds = Storage.worldsDir();
+                if (Files.isDirectory(worlds)) {
+                    try (Stream<Path> s = Files.list(worlds)) {
+                        Optional<Path> found = s.filter(Files::isDirectory)
+                                .filter(p -> p.getFileName().toString().startsWith(legacyPrefix))
+                                .findFirst();
+                        if (found.isPresent()) {
+                            targetId = found.get().getFileName().toString();
+                        }
+                    } catch (Exception ignored) {
+                    }
+                }
+            }
+
+            meta.id = targetId;
             meta.type = WorldMeta.SERVER;
+            if (sd != null) {
+                meta.name = sd.name != null && !sd.name.isBlank() ? sd.name : (sd.ip != null ? normalizeServerAddress(sd.ip) : "Server");
+                meta.address = sd.ip != null ? normalizeServerAddress(sd.ip) : "server";
+            } else {
+                meta.name = "Server";
+                meta.address = "server";
+            }
         }
         WorldMeta old = Storage.readJson(Storage.worldDir(meta.id).resolve("meta.json"), WorldMeta.class, null);
         if (old != null) {
             meta.lastDim = old.lastDim;
             meta.lastX = old.lastX;
             meta.lastZ = old.lastZ;
+            if (old.name != null && !old.name.isBlank()) {
+                meta.name = old.name;
+            }
         }
         meta.lastPlayed = System.currentTimeMillis();
         return meta;
