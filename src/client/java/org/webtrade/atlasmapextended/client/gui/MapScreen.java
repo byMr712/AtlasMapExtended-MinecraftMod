@@ -4499,23 +4499,33 @@ public class MapScreen extends Screen {
             y += 19;
         }
 
-        int bw = 150;
-        int bh = 20;
-        int gap = 16;
-        int totalW = bw * 2 + gap;
-        int bx = (width - totalW) / 2;
-        int by = height - 30;
+        if (parent instanceof WorldsScreen) {
+            int bw = 160;
+            int bh = 20;
+            int bx = (width - bw) / 2;
+            int by = height - 30;
+            boolean hBack = Paper.inside(mx, my, bx, by, bw, bh);
+            Paper.iconTextButton(g, font, Paper.tool("left"), T.tr("map.preview.back_atlas"), bx, by, bw, bh, hBack, true);
+            hit(bx, by, bw, bh, this::onClose);
+        } else {
+            int bw = 150;
+            int bh = 20;
+            int gap = 16;
+            int totalW = bw * 2 + gap;
+            int bx = (width - totalW) / 2;
+            int by = height - 30;
 
-        boolean canBind = MapManager.live() != null;
-        boolean hBind = canBind && Paper.inside(mx, my, bx, by, bw, bh);
-        Paper.iconTextButton(g, font, Paper.tool("check"), T.tr("map.preview.bind"), bx, by, bw, bh, hBind, canBind);
-        if (canBind) {
-            hit(bx, by, bw, bh, () -> openConfirmBind(previewMeta));
+            boolean canBind = MapManager.live() != null;
+            boolean hBind = canBind && Paper.inside(mx, my, bx, by, bw, bh);
+            Paper.iconTextButton(g, font, Paper.tool("check"), T.tr("map.preview.bind"), bx, by, bw, bh, hBind, canBind);
+            if (canBind) {
+                hit(bx, by, bw, bh, () -> openConfirmBind(previewMeta));
+            }
+
+            boolean hBack = Paper.inside(mx, my, bx + bw + gap, by, bw, bh);
+            Paper.iconTextButton(g, font, Paper.tool("left"), T.tr("map.preview.back"), bx + bw + gap, by, bw, bh, hBack, true);
+            hit(bx + bw + gap, by, bw, bh, this::onClose);
         }
-
-        boolean hBack = Paper.inside(mx, my, bx + bw + gap, by, bw, bh);
-        Paper.iconTextButton(g, font, Paper.tool("left"), T.tr("map.preview.back"), bx + bw + gap, by, bw, bh, hBack, true);
-        hit(bx + bw + gap, by, bw, bh, this::onClose);
     }
 
     private void openConfirmBind(WorldMeta target) {
