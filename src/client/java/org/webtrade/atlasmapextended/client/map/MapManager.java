@@ -16,6 +16,7 @@ import org.webtrade.atlasmapextended.client.data.ModConfig;
 
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.util.Locale;
 import java.util.Optional;
@@ -85,7 +86,7 @@ public final class MapManager {
 
     public static void discardLive() {
         if (live != null) {
-            live.close();
+            live.discard();
             live = null;
         }
         liveDim = null;
@@ -307,10 +308,38 @@ public final class MapManager {
         if (!Files.isDirectory(worldDir)) {
             return;
         }
+        Storage.flushIO();
         try {
-            String archiveId = worldId + "_old_" + System.currentTimeMillis();
+            long now = System.currentTimeMillis();
+            String archiveId = worldId + "_old_" + now;
             Path archiveDir = Storage.worldDir(archiveId);
-            Files.move(worldDir, archiveDir);
+            int suffix = 1;
+            while (Files.exists(archiveDir)) {
+                archiveId = worldId + "_old_" + now + "_" + suffix++;
+                archiveDir = Storage.worldDir(archiveId);
+            }
+            boolean moved = false;
+            for (int i = 0; i < 5; i++) {
+                try {
+                    Files.move(worldDir, archiveDir);
+                    moved = true;
+                    break;
+                } catch (IOException e) {
+                    if (i == 4) {
+                        break;
+                    }
+                    try {
+                        Thread.sleep(40);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                }
+            }
+            if (!moved) {
+                Storage.copyRecursive(worldDir, archiveDir);
+                Storage.deleteRecursive(worldDir);
+            }
             WorldMeta old = Storage.readJson(archiveDir.resolve("meta.json"), WorldMeta.class, null);
             if (old != null) {
                 old.id = archiveId;
