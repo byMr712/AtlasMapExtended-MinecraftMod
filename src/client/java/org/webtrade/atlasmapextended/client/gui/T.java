@@ -60,6 +60,7 @@ public final class T {
                 int color = 0xFF000000 | Integer.parseInt(a.get("color").getAsString().substring(1), 16);
                 ALIASES.put(e.getKey(), new Alias(a.get("icon").getAsString(), color));
             }
+            ALIASES.put("arrow", new Alias("arrow_n", 0));
         } catch (Exception e) {
             Storage.LOG.error("Failed to load the marker icon catalog", e);
             if (MARKER_ICONS.isEmpty()) {
