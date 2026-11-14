@@ -33,6 +33,9 @@ public class ModConfig {
     public boolean worldMarkers = false;
     public int markerSort = 0;
     public int regionSort = 0;
+    public int localMapSort = 0;
+    public int serverMapSort = 0;
+    public int realmMapSort = 0;
     public String theme = "papyrus";
     /** Shows a "Teleport" button on markers (needs command permission). */
     public boolean teleport = false;
@@ -95,6 +98,9 @@ public class ModConfig {
         deathMarkers = Math.max(0, Math.min(4, deathMarkers));
         deathMarkersCreated = Math.max(0, deathMarkersCreated);
         minimapCorner = Math.floorMod(minimapCorner, 4);
+        localMapSort = Math.floorMod(localMapSort, 3);
+        serverMapSort = Math.floorMod(serverMapSort, 3);
+        realmMapSort = Math.floorMod(realmMapSort, 3);
         if (serverMapOverrides == null) {
             serverMapOverrides = new java.util.HashMap<>();
         }
