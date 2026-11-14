@@ -10,7 +10,6 @@ import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.phys.Vec3;
-import com.mojang.blaze3d.vertex.PoseStack;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
@@ -162,15 +161,9 @@ public final class WorldMarkerHud {
             icon.uses++;
             icon.lastUsed = now;
             int tint = m.color == 0 ? alpha << 24 | 0xFFFFFF : Paper.a(m.color, alpha);
-            boolean mirrorH = m.icon != null && m.icon.startsWith("arrow");
+            boolean mirrorH = m.icon != null && (m.icon.startsWith("arrow") || "arrow".equals(m.icon));
             if (mirrorH) {
-                PoseStack pose = g.pose();
-                pose.pushPose();
-                pose.translate(sx, sy, 0);
-                pose.scale(-1.0f, 1.0f, 1.0f);
-                pose.translate(-sx, -sy, 0);
-                Paper.icon(g, icon.texture, sx - iconSize / 2, sy - iconSize / 2, iconSize, tint);
-                pose.popPose();
+                Paper.iconMirroredH(g, icon.texture, sx - iconSize / 2, sy - iconSize / 2, iconSize, tint);
             } else {
                 Paper.icon(g, icon.texture, sx - iconSize / 2, sy - iconSize / 2, iconSize, tint);
             }
@@ -195,7 +188,11 @@ public final class WorldMarkerHud {
     }
 
     private static IconEntry iconEntry(String icon, boolean tinted, long now) {
-        String name = icon == null ? "pin" : icon;
+        String name = icon == null || icon.isBlank() ? "pin" : ("arrow".equals(icon) ? "arrow_n" : icon);
+        T.Alias alias = T.ALIASES.get(name);
+        if (alias != null) {
+            name = alias.icon();
+        }
         String key = (tinted ? "t:" : "p:") + name;
         IconEntry entry = ICONS.get(key);
         if (entry == null) {
