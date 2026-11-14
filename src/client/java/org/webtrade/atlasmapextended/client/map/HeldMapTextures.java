@@ -92,7 +92,7 @@ public final class HeldMapTextures {
     private static Identifier get(MapId mapId, MapItemSavedData data, boolean withOverlay,
                                   int textureMask, boolean border,
                                   int tileDiv, int tileCol, int tileRow, int tileRotation) {
-        if (data.colors == null) {
+        if (!ModConfig.get().customMapStyle || data.colors == null) {
             return null;
         }
         int id = mapId.id();
