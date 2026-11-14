@@ -1418,13 +1418,18 @@ public class MapScreen extends Screen {
         int bottom = ly + lh - 8;
         int areaH = bottom - top;
         int rowH = 22;
+        boolean hasMarkers = session.markers.stream().anyMatch(m -> m.dim.equals(dim));
+        boolean hasRegions = !session.regions(dim).isEmpty();
         int contentH;
         if (globalSearch) {
             int found = markers.size() + regions.size();
             contentH = found == 0 ? 18 : found * rowH;
         } else {
-            contentH = listSectionHeight(markersOpen, markers.size()) + 4
-                    + listSectionHeight(regionsOpen, regions.size());
+            contentH = (hasMarkers ? listSectionHeight(markersOpen, markers.size()) + (hasRegions ? 4 : 0) : 0)
+                    + (hasRegions ? listSectionHeight(regionsOpen, regions.size()) : 0);
+            if (!hasMarkers && !hasRegions) {
+                contentH = 18;
+            }
         }
         double maxScroll = Math.max(0, contentH - areaH);
         listScroll = Math.max(0, Math.min(maxScroll, listScroll));
@@ -1452,80 +1457,87 @@ public class MapScreen extends Screen {
                 }
             }
         } else {
-            boolean anyMarker = session.markers.stream().anyMatch(m -> m.dim.equals(dim) && !m.hidden);
-            drawListHeader(g, mx, my, lx + 6, y, lw - 12, top, bottom, "list.section.markers", markers.size(),
-                    markersOpen, MARKER_SORTS, cfg.markerSort,
-                    this::toggleMarkersSection,
-                    () -> {
-                        cfg.markerSort = (cfg.markerSort + 1) % MARKER_SORTS.length;
-                        cfg.save();
-                    },
-                    () -> {
-                        cfg.markerSort = (cfg.markerSort + MARKER_SORTS.length - 1) % MARKER_SORTS.length;
-                        cfg.save();
-                    },
-                    () -> {
-                        boolean hide = session.markers.stream().anyMatch(m -> m.dim.equals(dim) && !m.hidden);
-                        session.markers.forEach(m -> {
-                            if (m.dim.equals(dim)) {
-                                m.hidden = hide;
+            if (hasMarkers) {
+                boolean anyMarker = session.markers.stream().anyMatch(m -> m.dim.equals(dim) && !m.hidden);
+                drawListHeader(g, mx, my, lx + 6, y, lw - 12, top, bottom, "list.section.markers", markers.size(),
+                        markersOpen, MARKER_SORTS, cfg.markerSort,
+                        this::toggleMarkersSection,
+                        () -> {
+                            cfg.markerSort = (cfg.markerSort + 1) % MARKER_SORTS.length;
+                            cfg.save();
+                        },
+                        () -> {
+                            cfg.markerSort = (cfg.markerSort + MARKER_SORTS.length - 1) % MARKER_SORTS.length;
+                            cfg.save();
+                        },
+                        () -> {
+                            boolean hide = session.markers.stream().anyMatch(m -> m.dim.equals(dim) && !m.hidden);
+                            session.markers.forEach(m -> {
+                                if (m.dim.equals(dim)) {
+                                    m.hidden = hide;
+                                }
+                            });
+                            session.saveMarkers();
+                        }, anyMarker);
+                y += 18;
+                if (markersOpen) {
+                    drawListSearch(g, markerSearchBox, lx + 12, y, lw - 24, "list.search_markers");
+                    y += 20;
+                    if (markers.isEmpty()) {
+                        g.drawString(font, T.tr("list.nothing_found"), lx + 12, y + 4, Paper.DISABLED, false);
+                        y += 18;
+                    } else {
+                        for (Marker m : markers) {
+                            if (y + rowH >= top && y <= bottom) {
+                                drawMarkerRow(g, mx, my, lx, lw, top, bottom, y, rowH, m, ref);
                             }
-                        });
-                        session.saveMarkers();
-                    }, anyMarker);
-            y += 18;
-            if (markersOpen) {
-                drawListSearch(g, markerSearchBox, lx + 12, y, lw - 24, "list.search_markers");
-                y += 20;
-                if (markers.isEmpty()) {
-                    g.drawString(font, T.tr(session.markers.stream().anyMatch(m -> m.dim.equals(dim))
-                                    ? "list.nothing_found" : "list.empty"),
-                            lx + 12, y + 4, Paper.DISABLED, false);
-                    y += 18;
-                } else {
-                    for (Marker m : markers) {
-                        if (y + rowH >= top && y <= bottom) {
-                            drawMarkerRow(g, mx, my, lx, lw, top, bottom, y, rowH, m, ref);
+                            y += rowH;
                         }
-                        y += rowH;
+                    }
+                }
+                if (hasRegions) {
+                    y += 4;
+                }
+            }
+
+            if (hasRegions) {
+                boolean anyRegion = session.regions(dim).stream().anyMatch(r -> !r.hidden);
+                drawListHeader(g, mx, my, lx + 6, y, lw - 12, top, bottom, "list.section.regions", regions.size(),
+                        regionsOpen, REGION_SORTS, cfg.regionSort,
+                        this::toggleRegionsSection,
+                        () -> {
+                            cfg.regionSort = (cfg.regionSort + 1) % REGION_SORTS.length;
+                            cfg.save();
+                        },
+                        () -> {
+                            cfg.regionSort = (cfg.regionSort + REGION_SORTS.length - 1) % REGION_SORTS.length;
+                            cfg.save();
+                        },
+                        () -> {
+                            boolean hide = session.regions(dim).stream().anyMatch(r -> !r.hidden);
+                            session.regions(dim).forEach(r -> r.hidden = hide);
+                            session.saveRegions();
+                        }, anyRegion);
+                y += 18;
+                if (regionsOpen) {
+                    drawListSearch(g, regionSearchBox, lx + 12, y, lw - 24, "list.search_regions");
+                    y += 20;
+                    if (regions.isEmpty()) {
+                        g.drawString(font, T.tr("list.nothing_found"), lx + 12, y + 4, Paper.DISABLED, false);
+                        y += 18;
+                    } else {
+                        for (Region r : regions) {
+                            if (y + rowH >= top && y <= bottom) {
+                                drawRegionRow(g, mx, my, lx, lw, top, bottom, y, rowH, r, ref);
+                            }
+                            y += rowH;
+                        }
                     }
                 }
             }
-            y += 4;
 
-            boolean anyRegion = session.regions(dim).stream().anyMatch(r -> !r.hidden);
-            drawListHeader(g, mx, my, lx + 6, y, lw - 12, top, bottom, "list.section.regions", regions.size(),
-                    regionsOpen, REGION_SORTS, cfg.regionSort,
-                    this::toggleRegionsSection,
-                    () -> {
-                        cfg.regionSort = (cfg.regionSort + 1) % REGION_SORTS.length;
-                        cfg.save();
-                    },
-                    () -> {
-                        cfg.regionSort = (cfg.regionSort + REGION_SORTS.length - 1) % REGION_SORTS.length;
-                        cfg.save();
-                    },
-                    () -> {
-                        boolean hide = session.regions(dim).stream().anyMatch(r -> !r.hidden);
-                        session.regions(dim).forEach(r -> r.hidden = hide);
-                        session.saveRegions();
-                    }, anyRegion);
-            y += 18;
-            if (regionsOpen) {
-                drawListSearch(g, regionSearchBox, lx + 12, y, lw - 24, "list.search_regions");
-                y += 20;
-                if (regions.isEmpty()) {
-                    g.drawString(font, T.tr(session.regions(dim).isEmpty() ? "list.empty_regions" : "list.nothing_found"),
-                            lx + 12, y + 4, Paper.DISABLED, false);
-                    y += 18;
-                } else {
-                    for (Region r : regions) {
-                        if (y + rowH >= top && y <= bottom) {
-                            drawRegionRow(g, mx, my, lx, lw, top, bottom, y, rowH, r, ref);
-                        }
-                        y += rowH;
-                    }
-                }
+            if (!hasMarkers && !hasRegions) {
+                g.drawString(font, T.tr("list.empty"), lx + 12, y + 4, Paper.DISABLED, false);
             }
         }
         g.disableScissor();
@@ -3167,8 +3179,10 @@ public class MapScreen extends Screen {
         descBox.visible = edit;
         boolean globalSearch = !search.isBlank();
         searchBox.setVisible(listOpen);
-        markerSearchBox.setVisible(listOpen && !globalSearch && markersOpen);
-        regionSearchBox.setVisible(listOpen && !globalSearch && regionsOpen);
+        boolean hasMarkers = session != null && session.markers.stream().anyMatch(m -> m.dim.equals(dim));
+        boolean hasRegions = session != null && !session.regions(dim).isEmpty();
+        markerSearchBox.setVisible(listOpen && !globalSearch && markersOpen && hasMarkers);
+        regionSearchBox.setVisible(listOpen && !globalSearch && regionsOpen && hasRegions);
         boolean inMaps = overlay == Overlay.MAPS && confirmBindTarget == null && previewMeta == null;
         boolean globalMaps = !mapSearch.isBlank();
         mapSearchBox.setVisible(inMaps);
