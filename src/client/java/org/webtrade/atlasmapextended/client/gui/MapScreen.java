@@ -33,6 +33,7 @@ import org.webtrade.atlasmapextended.client.map.MapSession;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -218,17 +219,41 @@ public class MapScreen extends Screen {
     private int biomeX;
     private int biomeZ;
 
+    private final WorldMeta previewMeta;
+    private WorldMeta confirmBindTarget;
+    private EditBox mapSearchBox;
+    private EditBox localMapSearchBox;
+    private EditBox serverMapSearchBox;
+    private EditBox realmMapSearchBox;
+    private String mapSearch = "";
+    private String localMapSearch = "";
+    private String serverMapSearch = "";
+    private String realmMapSearch = "";
+    private boolean localsOpen = true;
+    private boolean serversOpen = true;
+    private boolean realmsOpen = true;
+    private int localSort = 0;
+    private int serverSort = 0;
+    private int realmSort = 0;
+    private static final String[] MAP_SORTS = {"newest", "name", "markers"};
+    private final Map<String, Integer> markerCounts = new HashMap<>();
+
     public MapScreen(Screen parent, MapSession session, boolean ownsSession) {
+        this(parent, session, ownsSession, null);
+    }
+
+    public MapScreen(Screen parent, MapSession session, boolean ownsSession, WorldMeta previewMeta) {
         super(T.tr("map.title"));
         this.parent = parent;
         this.session = session;
         this.ownsSession = ownsSession;
+        this.previewMeta = previewMeta;
         this.dim = session.meta.lastDim;
         this.view.cx = session.meta.lastX;
         this.view.cz = session.meta.lastZ;
         this.view.zoom = lastZoom;
         Minecraft mc = Minecraft.getInstance();
-        if (session.isLive() && mc.player != null && mc.level != null) {
+        if (previewMeta == null && session.isLive() && mc.player != null && mc.level != null) {
             dim = mc.level.dimension().identifier().toString();
             view.cx = mc.player.getX();
             view.cz = mc.player.getZ();
@@ -421,6 +446,50 @@ public class MapScreen extends Screen {
         shareCommentBox.setTextShadow(false);
         shareCommentBox.setMaxLength(128);
         addWidget(shareCommentBox);
+
+        mapSearchBox = new EditBox(font, 0, 0, 100, 12, T.tr("map.search_all"));
+        mapSearchBox.setBordered(false);
+        mapSearchBox.setTextColor(Paper.INK);
+        mapSearchBox.setTextShadow(false);
+        mapSearchBox.setValue(mapSearch);
+        mapSearchBox.setResponder(s -> {
+            mapSearch = s.toLowerCase(Locale.ROOT).trim();
+            scrollMaps = 0;
+        });
+        addWidget(mapSearchBox);
+
+        localMapSearchBox = new EditBox(font, 0, 0, 100, 12, T.tr("map.search_locals"));
+        localMapSearchBox.setBordered(false);
+        localMapSearchBox.setTextColor(Paper.INK);
+        localMapSearchBox.setTextShadow(false);
+        localMapSearchBox.setValue(localMapSearch);
+        localMapSearchBox.setResponder(s -> {
+            localMapSearch = s.toLowerCase(Locale.ROOT).trim();
+            scrollMaps = 0;
+        });
+        addWidget(localMapSearchBox);
+
+        serverMapSearchBox = new EditBox(font, 0, 0, 100, 12, T.tr("map.search_servers"));
+        serverMapSearchBox.setBordered(false);
+        serverMapSearchBox.setTextColor(Paper.INK);
+        serverMapSearchBox.setTextShadow(false);
+        serverMapSearchBox.setValue(serverMapSearch);
+        serverMapSearchBox.setResponder(s -> {
+            serverMapSearch = s.toLowerCase(Locale.ROOT).trim();
+            scrollMaps = 0;
+        });
+        addWidget(serverMapSearchBox);
+
+        realmMapSearchBox = new EditBox(font, 0, 0, 100, 12, T.tr("map.search_realms"));
+        realmMapSearchBox.setBordered(false);
+        realmMapSearchBox.setTextColor(Paper.INK);
+        realmMapSearchBox.setTextShadow(false);
+        realmMapSearchBox.setValue(realmMapSearch);
+        realmMapSearchBox.setResponder(s -> {
+            realmMapSearch = s.toLowerCase(Locale.ROOT).trim();
+            scrollMaps = 0;
+        });
+        addWidget(realmMapSearchBox);
         if (working != null) {
             fillWidgets();
         }
@@ -536,6 +605,28 @@ public class MapScreen extends Screen {
             return;
         }
         g.nextStratum();
+
+        if (previewMeta != null) {
+            drawPreviewHud(g, mx, my);
+            if (confirmBindTarget != null) {
+                drawConfirmBind(g, mx, my);
+            }
+            if (tooltip != null) {
+                String tip = tooltip.getString();
+                if (tip.indexOf('\n') >= 0) {
+                    List<Component> lines = new ArrayList<>();
+                    for (String line : tip.split("\n", -1)) {
+                        lines.add(Component.literal(line));
+                    }
+                    g.setComponentTooltipForNextFrame(font, lines, mx, my);
+                } else {
+                    g.setTooltipForNextFrame(font, tooltip, mx, my);
+                }
+                tooltip = null;
+            }
+            lastUiRects = new ArrayList<>(uiRects);
+            return;
+        }
 
         drawToolbar(g, mx, my);
         if (tool == Tool.DRAW) {
@@ -1202,7 +1293,8 @@ public class MapScreen extends Screen {
     private void drawListHeader(GuiGraphicsExtractor g, int mx, int my, int x, int y, int w, int top, int bottom,
                                 String titleKey, int count, boolean open, String[] sorts, int sortIndex,
                                 Runnable toggle, Runnable next, Runnable prev, Runnable eye, boolean anyVisible) {
-        boolean hover = overlay == Overlay.NONE && Paper.inside(mx, my, x, y, w, 18);
+        boolean canHover = overlay == Overlay.NONE || overlay == Overlay.MAPS;
+        boolean hover = canHover && Paper.inside(mx, my, x, y, w, 18);
         g.fill(x, y, x + w, y + 18, hover ? 0x24FFFFFF : 0x12FFFFFF);
         g.outline(x, y, w, 18, Paper.a(Paper.INK, 0x40));
         g.text(font, open ? "▾" : "▸", x + 4, y + 5, Paper.INK, false);
@@ -1212,20 +1304,22 @@ public class MapScreen extends Screen {
         if (hh > 0) {
             hit(x, hy, w, hh, toggle);
         }
-        int sx = x + w - 48;
-        boolean hs = overlay == Overlay.NONE && Paper.inside(mx, my, sx, y + 1, 16, 16);
+        int sx = eye != null ? x + w - 48 : x + w - 26;
+        boolean hs = canHover && Paper.inside(mx, my, sx, y + 1, 16, 16);
         Paper.iconButton(g, Paper.tool("sort"), sx, y + 1, 16, hs, false);
         if (hs) {
             tooltip = T.tr("sort." + sorts[Math.floorMod(sortIndex, sorts.length)]);
         }
         hit(sx, y + 1, 16, 16, next, prev);
-        int ex = x + w - 26;
-        boolean he = overlay == Overlay.NONE && Paper.inside(mx, my, ex, y + 1, 16, 16);
-        Paper.iconButton(g, Paper.tool(anyVisible ? "eye" : "eye_off"), ex, y + 1, 16, he, false);
-        if (he) {
-            tooltip = T.tr(anyVisible ? "list.hide_all" : "list.show_all");
+        if (eye != null) {
+            int ex = x + w - 26;
+            boolean he = canHover && Paper.inside(mx, my, ex, y + 1, 16, 16);
+            Paper.iconButton(g, Paper.tool(anyVisible ? "eye" : "eye_off"), ex, y + 1, 16, he, false);
+            if (he) {
+                tooltip = T.tr(anyVisible ? "list.hide_all" : "list.show_all");
+            }
+            hit(ex, y + 1, 16, 16, eye);
         }
-        hit(ex, y + 1, 16, 16, eye);
     }
 
     private void drawMarkerRow(GuiGraphicsExtractor g, int mx, int my, int lx, int lw,
@@ -3096,6 +3190,12 @@ public class MapScreen extends Screen {
         searchBox.setVisible(listOpen);
         markerSearchBox.setVisible(listOpen && !globalSearch && markersOpen);
         regionSearchBox.setVisible(listOpen && !globalSearch && regionsOpen);
+        boolean inMaps = overlay == Overlay.MAPS && confirmBindTarget == null && previewMeta == null;
+        boolean globalMaps = !mapSearch.isBlank();
+        mapSearchBox.setVisible(inMaps);
+        localMapSearchBox.setVisible(inMaps && !globalMaps && localsOpen);
+        serverMapSearchBox.setVisible(inMaps && !globalMaps && serversOpen);
+        realmMapSearchBox.setVisible(inMaps && !globalMaps && realmsOpen);
         iconSearch.setVisible(overlay == Overlay.ICONS);
         regionNameBox.setVisible(overlay == Overlay.REGION);
         if (shareCommentBox != null) shareCommentBox.setVisible(overlay == Overlay.SHARE);
@@ -3125,6 +3225,10 @@ public class MapScreen extends Screen {
         double mx = e.x();
         double my = e.y();
         int button = e.button();
+        if (confirmBindTarget != null) {
+            runHits(mx, my, button);
+            return true;
+        }
         if (overlay == Overlay.VIEWER && annotationPress(mx, my, button)) {
             return true;
         }
@@ -3140,6 +3244,34 @@ public class MapScreen extends Screen {
             } else {
                 runHits(mx, my, button);
             }
+            return true;
+        }
+        if (overlay == Overlay.MAPS) {
+            if (confirmBindTarget != null) {
+                runHits(mx, my, button);
+                return true;
+            }
+            if (mapSearchBox.isMouseOver(mx, my)) {
+                setFocused(mapSearchBox);
+                mapSearchBox.mouseClicked(e, doubleClick);
+                return true;
+            }
+            if (localMapSearchBox.isVisible() && localMapSearchBox.isMouseOver(mx, my)) {
+                setFocused(localMapSearchBox);
+                localMapSearchBox.mouseClicked(e, doubleClick);
+                return true;
+            }
+            if (serverMapSearchBox.isVisible() && serverMapSearchBox.isMouseOver(mx, my)) {
+                setFocused(serverMapSearchBox);
+                serverMapSearchBox.mouseClicked(e, doubleClick);
+                return true;
+            }
+            if (realmMapSearchBox.isVisible() && realmMapSearchBox.isMouseOver(mx, my)) {
+                setFocused(realmMapSearchBox);
+                realmMapSearchBox.mouseClicked(e, doubleClick);
+                return true;
+            }
+            runHits(mx, my, button);
             return true;
         }
         if (overlay != Overlay.NONE) {
@@ -3210,6 +3342,9 @@ public class MapScreen extends Screen {
 
     @Override
     public boolean mouseDragged(MouseButtonEvent e, double dx, double dy) {
+        if (confirmBindTarget != null) {
+            return true;
+        }
         if (annotPressed) {
             annotationDrag(e.x(), e.y());
             return true;
@@ -3845,7 +3980,9 @@ public class MapScreen extends Screen {
         }
     }
 
-    private void onMapClick(double mx, double my, int button) {        Marker hit = cfg.markersVisible ? view.markerAt(session.markers, dim, mx, my, 16) : null;
+    private void onMapClick(double mx, double my, int button) {
+        if (previewMeta != null) return;
+        Marker hit = cfg.markersVisible ? view.markerAt(session.markers, dim, mx, my, 16) : null;
         if (tool == Tool.RULER) {
             if (button == InputConstants.MOUSE_BUTTON_LEFT) {
                 double[] p = hit != null ? new double[]{hit.x + 0.5, hit.z + 0.5} : new double[]{view.wx(mx), view.wz(my)};
@@ -3892,6 +4029,9 @@ public class MapScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mx, double my, double sx, double sy) {
+        if (confirmBindTarget != null) {
+            return true;
+        }
         if (overlay != Overlay.NONE && overlay != Overlay.PICKER && overlay != Overlay.ICONS && overlay != Overlay.MAPS) {
             return true;
         }
@@ -3969,6 +4109,18 @@ public class MapScreen extends Screen {
         if (overlay == Overlay.ICONS && !e.isEscape()) {
             setFocused(iconSearch);
             iconSearch.keyPressed(e);
+            return true;
+        }
+        if (confirmBindTarget != null) {
+            if (e.isEscape()) {
+                confirmBindTarget = null;
+            }
+            return true;
+        }
+        if (previewMeta != null) {
+            if (e.isEscape() || ModKeys.OPEN_MAP.matches(e)) {
+                this.onClose();
+            }
             return true;
         }
         if (overlay != Overlay.NONE) {
@@ -4067,6 +4219,13 @@ public class MapScreen extends Screen {
             setFocused(iconSearch);
             return iconSearch.charTyped(e);
         }
+        if (overlay == Overlay.MAPS) {
+            GuiEventListener f = getFocused();
+            if (f != null) {
+                return f.charTyped(e);
+            }
+            return true;
+        }
         if (overlay != Overlay.NONE) {
             return true;
         }
@@ -4101,10 +4260,101 @@ public class MapScreen extends Screen {
 
     private double scrollMaps;
 
+    private void drawMapSearch(GuiGraphicsExtractor g, EditBox box, int x, int y, int w, String hintKey) {
+        Paper.inset(g, x, y, w, 14);
+        Paper.icon(g, Paper.tool("zoom_in"), x + 2, y + 2, 10);
+        box.setX(x + 14);
+        box.setY(y + 3);
+        box.setWidth(w - 18);
+        box.extractRenderState(g, (int) mouseX, (int) mouseY, 0);
+        hint(g, box, T.s(hintKey));
+    }
+
+    private List<WorldMeta> filterAndSortMaps(List<WorldMeta> list, String query, int sort) {
+        List<WorldMeta> out = new ArrayList<>();
+        for (WorldMeta m : list) {
+            if (query.isEmpty() || (m.name != null && m.name.toLowerCase(Locale.ROOT).contains(query))
+                    || (m.address != null && m.address.toLowerCase(Locale.ROOT).contains(query))
+                    || (m.id != null && m.id.toLowerCase(Locale.ROOT).contains(query))) {
+                out.add(m);
+            }
+        }
+        String activeId = session != null && session.meta != null ? session.meta.id : "";
+        out.sort((a, b) -> {
+            boolean aAct = a.id.equals(activeId);
+            boolean bAct = b.id.equals(activeId);
+            if (aAct != bAct) return aAct ? -1 : 1;
+            return switch (sort) {
+                case 1 -> {
+                    String na = a.name != null && !a.name.isBlank() ? a.name : a.id;
+                    String nb = b.name != null && !b.name.isBlank() ? b.name : b.id;
+                    yield String.CASE_INSENSITIVE_ORDER.compare(na, nb);
+                }
+                case 2 -> {
+                    int ca = markerCounts.computeIfAbsent(a.id, Storage::countMarkers);
+                    int cb = markerCounts.computeIfAbsent(b.id, Storage::countMarkers);
+                    yield Integer.compare(cb, ca);
+                }
+                default -> Long.compare(b.lastPlayed, a.lastPlayed);
+            };
+        });
+        return out;
+    }
+
+    private void drawMapRow(GuiGraphicsExtractor g, int mx, int my, int ox, int ow, int top, int bottom, int y, int rowH, WorldMeta w, String activeId) {
+        boolean active = w.id.equals(activeId);
+        boolean hover = Paper.inside(mx, my, ox + 8, y, ow - 16, rowH - 2) && my >= top && my < bottom;
+
+        if (active) {
+            g.fill(ox + 8, y, ox + ow - 8, y + rowH - 2, Paper.a(Paper.GOLD, 0x40));
+            g.outline(ox + 8, y, ow - 16, rowH - 2, Paper.GOLD);
+        } else if (hover) {
+            g.fill(ox + 8, y, ox + ow - 8, y + rowH - 2, 0x25FFFFFF);
+            g.outline(ox + 8, y, ow - 16, rowH - 2, Paper.INK_SOFT);
+        }
+
+        String icon = w.isRealm() ? "star" : (w.isServer() ? "globe" : "map");
+        Paper.icon(g, Paper.tool(icon), ox + 12, y + 5, 16);
+
+        String name = (w.name != null && !w.name.isBlank()) ? w.name : w.id;
+        name = font.plainSubstrByWidth(name, ow - 110);
+        g.text(font, name, ox + 32, y + 4, active ? Paper.GOLD : Paper.INK, false);
+
+        int count = markerCounts.computeIfAbsent(w.id, Storage::countMarkers);
+        String sub = (w.address != null && !w.address.isBlank()) ? w.address : w.id;
+        sub = sub + " (" + count + ")";
+        sub = font.plainSubstrByWidth(sub, ow - 110);
+        g.text(font, sub, ox + 32, y + 14, Paper.INK_SOFT, false);
+
+        if (active) {
+            String actStr = T.s("map.active");
+            g.text(font, actStr, ox + ow - 36 - font.width(actStr), y + 8, 0xFF44AA44, false);
+        }
+
+        int ex = ox + ow - 28;
+        int ey = y + 5;
+        boolean eh = hover && Paper.inside(mx, my, ex, ey, 16, 16);
+        Paper.iconButton(g, Paper.tool("eye"), ex, ey, 16, eh, false);
+        if (eh) {
+            tooltip = T.tr("map.preview_tooltip");
+        }
+
+        int clipY = Math.max(y, top);
+        int clipH = Math.min(y + rowH - 2, bottom) - clipY;
+        if (clipH > 0) {
+            if (ey >= top && ey + 16 <= bottom) {
+                hit(ex, ey, 16, 16, () -> openPreviewMap(w));
+            }
+            if (!active) {
+                hit(ox + 8, clipY, ow - 38, clipH, () -> openConfirmBind(w));
+            }
+        }
+    }
+
     private void drawMapSelect(GuiGraphicsExtractor g, int mx, int my) {
         blocker(() -> overlay = Overlay.NONE);
-        int ow = 260;
-        int oh = Math.min(height - 30, 290);
+        int ow = Math.min(320, width - 20);
+        int oh = Math.min(height - 24, 380);
         int ox = (width - ow) / 2;
         int oy = (height - oh) / 2;
         Paper.panel(g, ox, oy, ow, oh);
@@ -4116,7 +4366,7 @@ public class MapScreen extends Screen {
         closeButton(g, mx, my, ox + ow - 18, oy + 5, () -> overlay = Overlay.NONE);
 
         Minecraft mc = Minecraft.getInstance();
-        String defaultKey = MapManager.resolveDefaultServerKey(mc);
+        String defaultKey = MapManager.resolveDefaultKey(mc);
         boolean hasOverride = defaultKey != null && ModConfig.get().serverMapOverrides.containsKey(defaultKey);
 
         int btnY = oy + oh - 24;
@@ -4139,69 +4389,364 @@ public class MapScreen extends Screen {
         String curInfo = T.s("map.current_map", font.plainSubstrByWidth(curName, ow - 40));
         g.text(font, curInfo, ox + 10, oy + 22, Paper.INK_SOFT, false);
 
-        int top = oy + 34;
-        int bottom = (session.isLive() && defaultKey != null) ? btnY - 6 : oy + oh - 8;
-        Paper.separator(g, ox + 8, top - 2, ow - 16);
+        int sy = oy + 34;
+        drawMapSearch(g, mapSearchBox, ox + 8, sy, ow - 16, "map.search_all");
 
-        List<WorldMeta> worlds = Storage.listWorlds();
-        String activeId = session.meta.id;
-        worlds.sort((a, b) -> {
-            if (a.id.equals(activeId)) return -1;
-            if (b.id.equals(activeId)) return 1;
-            if (a.isServer() != b.isServer()) return a.isServer() ? -1 : 1;
-            return Long.compare(b.lastPlayed, a.lastPlayed);
-        });
+        int top = sy + 18;
+        int bottom = (session.isLive() && defaultKey != null) ? btnY - 6 : oy + oh - 8;
+        int areaH = bottom - top;
+
+        List<WorldMeta> allWorlds = Storage.listWorlds();
+        List<WorldMeta> rawLocals = new ArrayList<>();
+        List<WorldMeta> rawServers = new ArrayList<>();
+        List<WorldMeta> rawRealms = new ArrayList<>();
+        for (WorldMeta w : allWorlds) {
+            if (w.isRealm()) {
+                rawRealms.add(w);
+            } else if (w.isServer()) {
+                rawServers.add(w);
+            } else {
+                rawLocals.add(w);
+            }
+        }
+
+        boolean globalSearch = !mapSearch.isBlank();
+        List<WorldMeta> locals = filterAndSortMaps(rawLocals, globalSearch ? mapSearch : localMapSearch, localSort);
+        List<WorldMeta> servers = filterAndSortMaps(rawServers, globalSearch ? mapSearch : serverMapSearch, serverSort);
+        List<WorldMeta> realms = filterAndSortMaps(rawRealms, globalSearch ? mapSearch : realmMapSearch, realmSort);
 
         int rowH = 26;
-        int totalH = worlds.size() * rowH;
-        double maxScroll = Math.max(0, totalH - (bottom - top));
-        scrollMaps = Math.max(0, Math.min(maxScroll, scrollMaps));
-        scroll(ox + 8, top, ow - 16, bottom - top, d -> scrollMaps -= d * rowH * 1.5);
+        int totalH = 0;
+        if (globalSearch) {
+            int totalMatches = locals.size() + servers.size() + realms.size();
+            totalH = totalMatches == 0 ? 18 : totalMatches * rowH;
+        } else {
+            if (!rawLocals.isEmpty()) {
+                totalH += 18;
+                if (localsOpen) totalH += 18 + locals.size() * rowH;
+            }
+            if (!rawServers.isEmpty()) {
+                totalH += 18;
+                if (serversOpen) totalH += 18 + servers.size() * rowH;
+            }
+            if (!rawRealms.isEmpty()) {
+                totalH += 18;
+                if (realmsOpen) totalH += 18 + realms.size() * rowH;
+            }
+        }
 
+        double maxScroll = Math.max(0, totalH - areaH);
+        scrollMaps = Math.max(0, Math.min(maxScroll, scrollMaps));
+        scroll(ox + 8, top, ow - 16, areaH, d -> scrollMaps -= d * rowH * 1.5);
+
+        String activeId = session.meta.id;
         g.enableScissor(ox + 6, top, ox + ow - 6, bottom);
         int y = top + 2 - (int) scrollMaps;
-        for (WorldMeta w : worlds) {
-            if (y + rowH >= top && y <= bottom) {
-                boolean active = w.id.equals(activeId);
-                boolean hover = Paper.inside(mx, my, ox + 8, y, ow - 16, rowH - 2) && my >= top && my < bottom;
 
-                if (active) {
-                    g.fill(ox + 8, y, ox + ow - 8, y + rowH - 2, Paper.a(Paper.GOLD, 0x40));
-                    g.outline(ox + 8, y, ow - 16, rowH - 2, Paper.GOLD);
-                } else if (hover) {
-                    g.fill(ox + 8, y, ox + ow - 8, y + rowH - 2, 0x25FFFFFF);
-                    g.outline(ox + 8, y, ow - 16, rowH - 2, Paper.INK_SOFT);
+        if (globalSearch) {
+            if (locals.isEmpty() && servers.isEmpty() && realms.isEmpty()) {
+                g.text(font, T.tr("list.nothing_found"), ox + 12, y + 4, Paper.DISABLED, false);
+            } else {
+                for (WorldMeta w : locals) {
+                    if (y + rowH >= top && y <= bottom) drawMapRow(g, mx, my, ox, ow, top, bottom, y, rowH, w, activeId);
+                    y += rowH;
                 }
-
-                String icon = w.isServer() ? "globe" : "map";
-                Paper.icon(g, Paper.tool(icon), ox + 12, y + 4, 16);
-
-                String name = (w.name != null && !w.name.isBlank()) ? w.name : w.id;
-                name = font.plainSubstrByWidth(name, ow - 90);
-                g.text(font, name, ox + 32, y + 3, active ? Paper.GOLD : Paper.INK, false);
-
-                String sub = (w.address != null && !w.address.isBlank()) ? w.address : w.id;
-                sub = font.plainSubstrByWidth(sub, ow - 90);
-                g.text(font, sub, ox + 32, y + 13, Paper.INK_SOFT, false);
-
-                if (active) {
-                    String actStr = T.s("map.active");
-                    g.text(font, actStr, ox + ow - 14 - font.width(actStr), y + 8, 0xFF44AA44, false);
+                for (WorldMeta w : servers) {
+                    if (y + rowH >= top && y <= bottom) drawMapRow(g, mx, my, ox, ow, top, bottom, y, rowH, w, activeId);
+                    y += rowH;
                 }
-
-                int clipY = Math.max(y, top);
-                int clipH = Math.min(y + rowH - 2, bottom) - clipY;
-                if (clipH > 0 && !active) {
-                    hit(ox + 8, clipY, ow - 16, clipH, () -> {
-                        switchMapTo(w.id);
-                        overlay = Overlay.NONE;
-                        Paper.click();
-                    });
+                for (WorldMeta w : realms) {
+                    if (y + rowH >= top && y <= bottom) drawMapRow(g, mx, my, ox, ow, top, bottom, y, rowH, w, activeId);
+                    y += rowH;
                 }
             }
-            y += rowH;
+        } else {
+            if (!rawLocals.isEmpty()) {
+                drawListHeader(g, mx, my, ox + 8, y, ow - 16, top, bottom, "map.section.locals", locals.size(),
+                        localsOpen, MAP_SORTS, localSort,
+                        () -> localsOpen = !localsOpen,
+                        () -> localSort = (localSort + 1) % MAP_SORTS.length,
+                        () -> localSort = (localSort + MAP_SORTS.length - 1) % MAP_SORTS.length,
+                        null, false);
+                y += 18;
+                if (localsOpen) {
+                    drawMapSearch(g, localMapSearchBox, ox + 8, y + 2, ow - 16, "map.search_locals");
+                    y += 18;
+                    for (WorldMeta w : locals) {
+                        if (y + rowH >= top && y <= bottom) drawMapRow(g, mx, my, ox, ow, top, bottom, y, rowH, w, activeId);
+                        y += rowH;
+                    }
+                }
+            }
+            if (!rawServers.isEmpty()) {
+                drawListHeader(g, mx, my, ox + 8, y, ow - 16, top, bottom, "map.section.servers", servers.size(),
+                        serversOpen, MAP_SORTS, serverSort,
+                        () -> serversOpen = !serversOpen,
+                        () -> serverSort = (serverSort + 1) % MAP_SORTS.length,
+                        () -> serverSort = (serverSort + MAP_SORTS.length - 1) % MAP_SORTS.length,
+                        null, false);
+                y += 18;
+                if (serversOpen) {
+                    drawMapSearch(g, serverMapSearchBox, ox + 8, y + 2, ow - 16, "map.search_servers");
+                    y += 18;
+                    for (WorldMeta w : servers) {
+                        if (y + rowH >= top && y <= bottom) drawMapRow(g, mx, my, ox, ow, top, bottom, y, rowH, w, activeId);
+                        y += rowH;
+                    }
+                }
+            }
+            if (!rawRealms.isEmpty()) {
+                drawListHeader(g, mx, my, ox + 8, y, ow - 16, top, bottom, "map.section.realms", realms.size(),
+                        realmsOpen, MAP_SORTS, realmSort,
+                        () -> realmsOpen = !realmsOpen,
+                        () -> realmSort = (realmSort + 1) % MAP_SORTS.length,
+                        () -> realmSort = (realmSort + MAP_SORTS.length - 1) % MAP_SORTS.length,
+                        null, false);
+                y += 18;
+                if (realmsOpen) {
+                    drawMapSearch(g, realmMapSearchBox, ox + 8, y + 2, ow - 16, "map.search_realms");
+                    y += 18;
+                    for (WorldMeta w : realms) {
+                        if (y + rowH >= top && y <= bottom) drawMapRow(g, mx, my, ox, ow, top, bottom, y, rowH, w, activeId);
+                        y += rowH;
+                    }
+                }
+            }
         }
         g.disableScissor();
+
+        if (confirmBindTarget != null) {
+            drawConfirmBind(g, mx, my);
+        }
+    }
+
+    private void openPreviewMap(WorldMeta w) {
+        MapSession s = MapManager.openForViewing(w);
+        if (s != null) {
+            suspended = true;
+            minecraft.gui.setScreen(new MapScreen(this, s, true, w));
+            Paper.pageTurn();
+        }
+    }
+
+    private void drawPreviewHud(GuiGraphicsExtractor g, int mx, int my) {
+        int pw = Math.min(360, width - 40);
+        int px = (width - pw) / 2;
+        Paper.panel(g, px, 6, pw, 22);
+        ui(px, 6, pw, 22);
+        hit(px, 6, pw, 22, () -> {});
+        String pTitle = T.s("map.preview_title", previewMeta.name != null && !previewMeta.name.isBlank() ? previewMeta.name : previewMeta.id);
+        Paper.title(g, font, font.plainSubstrByWidth(pTitle, pw - 40), px + pw / 2, 11);
+        Paper.icon(g, Paper.tool(previewMeta.isRealm() ? "star" : (previewMeta.isServer() ? "globe" : "map")), px + 6, 9, 16);
+
+        List<String> dims = session.knownDims();
+        if (!dims.contains(dim)) {
+            dims.add(dim);
+        }
+        int dw = 130;
+        int dh = dims.size() * 19 + 26;
+        int dx = 10;
+        int dy = Math.max(10, (height - dh) / 2);
+        Paper.panel(g, dx, dy, dw, dh);
+        ui(dx, dy, dw, dh);
+        hit(dx, dy, dw, dh, () -> {});
+        Paper.title(g, font, T.s("dims.title"), dx + dw / 2, dy + 8);
+        int y = dy + 22;
+        for (String d : dims) {
+            boolean cur = d.equals(dim);
+            boolean h = Paper.inside(mx, my, dx + 6, y, dw - 12, 16);
+            Paper.button(g, font, Component.literal((cur ? "» " : "") + T.dimName(d) + (cur ? " «" : "")), dx + 6, y, dw - 12, 16, h, true);
+            hit(dx + 6, y, dw - 12, 16, () -> switchDim(d));
+            y += 19;
+        }
+
+        int bw = 150;
+        int bh = 20;
+        int gap = 16;
+        int totalW = bw * 2 + gap;
+        int bx = (width - totalW) / 2;
+        int by = height - 30;
+
+        boolean canBind = MapManager.live() != null;
+        boolean hBind = canBind && Paper.inside(mx, my, bx, by, bw, bh);
+        Paper.iconTextButton(g, font, Paper.tool("check"), T.tr("map.preview.bind"), bx, by, bw, bh, hBind, canBind);
+        if (canBind) {
+            hit(bx, by, bw, bh, () -> openConfirmBind(previewMeta));
+        }
+
+        boolean hBack = Paper.inside(mx, my, bx + bw + gap, by, bw, bh);
+        Paper.iconTextButton(g, font, Paper.tool("left"), T.tr("map.preview.back"), bx + bw + gap, by, bw, bh, hBack, true);
+        hit(bx + bw + gap, by, bw, bh, this::onClose);
+    }
+
+    private void openConfirmBind(WorldMeta target) {
+        this.confirmBindTarget = target;
+        Paper.click();
+    }
+
+    private void drawConfirmBind(GuiGraphicsExtractor g, int mx, int my) {
+        blocker(() -> confirmBindTarget = null);
+        g.fill(0, 0, width, height, Paper.DIM);
+        modalStart = hits.size();
+
+        int ow = Math.min(360, width - 20);
+        List<FormattedCharSequence> titleLines = font.split(T.tr("map.confirm_bind.title"), ow - 24);
+        int lineH = titleLines.size() * 10;
+        int btnH = 20;
+        int btnGap = 5;
+        int totalBtnH = 3 * btnH + 2 * btnGap;
+        int oh = 24 + lineH + 12 + totalBtnH + 16;
+        int ox = (width - ow) / 2;
+        int oy = (height - oh) / 2;
+
+        Paper.panel(g, ox, oy, ow, oh);
+        hit(ox, oy, ow, oh, () -> {});
+
+        int ty = oy + 12;
+        for (FormattedCharSequence l : titleLines) {
+            g.text(font, l, ox + (ow - font.width(l)) / 2, ty, Paper.INK, false);
+            ty += 10;
+        }
+        ty += 8;
+
+        int bw = ow - 24;
+        int bx = ox + 12;
+
+        boolean h1 = Paper.inside(mx, my, bx, ty, bw, btnH);
+        Paper.button(g, font, T.tr("map.confirm_bind.full"), bx, ty, bw, btnH, h1, true);
+        if (h1) {
+            tooltip = T.tr("map.confirm_bind.full.tooltip");
+        }
+        hit(bx, ty, bw, btnH, () -> {
+            WorldMeta target = confirmBindTarget;
+            confirmBindTarget = null;
+            executeBindMap(target, true);
+        });
+        ty += btnH + btnGap;
+
+        boolean h2 = Paper.inside(mx, my, bx, ty, bw, btnH);
+        Paper.button(g, font, T.tr("map.confirm_bind.markers_only"), bx, ty, bw, btnH, h2, true);
+        if (h2) {
+            tooltip = T.tr("map.confirm_bind.markers_only.tooltip");
+        }
+        hit(bx, ty, bw, btnH, () -> {
+            WorldMeta target = confirmBindTarget;
+            confirmBindTarget = null;
+            executeBindMap(target, false);
+        });
+        ty += btnH + btnGap;
+
+        boolean h3 = Paper.inside(mx, my, bx, ty, bw, btnH);
+        Paper.button(g, font, T.tr("map.confirm_bind.cancel"), bx, ty, bw, btnH, h3, true);
+        if (h3) {
+            tooltip = T.tr("map.confirm_bind.cancel.tooltip");
+        }
+        hit(bx, ty, bw, btnH, () -> confirmBindTarget = null);
+    }
+
+    private void executeBindMap(WorldMeta source, boolean fullCopy) {
+        if (source == null) return;
+        Minecraft mc = Minecraft.getInstance();
+        String currentKey = MapManager.resolveDefaultKey(mc);
+        if (currentKey == null) {
+            if (session != null && session.meta != null) {
+                currentKey = session.meta.id;
+            } else {
+                return;
+            }
+        }
+
+        final String targetId = currentKey;
+        final String sourceId = source.id;
+
+        if (targetId.equals(sourceId)) {
+            return;
+        }
+
+        try {
+            Path srcDir = Storage.worldDir(sourceId);
+            Path dstDir = Storage.worldDir(targetId);
+
+            if (!Files.isDirectory(srcDir)) {
+                return;
+            }
+
+            if (fullCopy) {
+                if (Files.isDirectory(dstDir)) {
+                    MapManager.archiveWorld(targetId, "Replaced by " + sourceId);
+                }
+                Files.createDirectories(dstDir);
+                Storage.copyRecursive(srcDir, dstDir);
+
+                WorldMeta meta = Storage.readJson(dstDir.resolve("meta.json"), WorldMeta.class, null);
+                if (meta == null) {
+                    meta = new WorldMeta();
+                }
+                meta.id = targetId;
+                WorldMeta liveMeta = MapManager.live() != null ? MapManager.live().meta : null;
+                if (liveMeta != null) {
+                    meta.name = liveMeta.name;
+                    meta.address = liveMeta.address;
+                    meta.type = liveMeta.type;
+                    meta.seed = liveMeta.seed;
+                    meta.uid = liveMeta.uid;
+                }
+                meta.lastPlayed = System.currentTimeMillis();
+                Storage.writeJson(dstDir.resolve("meta.json"), meta);
+
+                ModConfig cfg = ModConfig.get();
+                if (cfg != null && cfg.serverMapOverrides != null) {
+                    cfg.serverMapOverrides.remove(targetId);
+                    cfg.save();
+                }
+
+                if (session.isLive()) {
+                    MapManager.switchLive(targetId);
+                    session = MapManager.live();
+                } else {
+                    session.close();
+                    session = MapSession.open(meta);
+                }
+                WaypointShare.notifyPlayer(T.s("map.bind.success", source.name != null && !source.name.isBlank() ? source.name : source.id));
+            } else {
+                Files.createDirectories(dstDir);
+                if (Files.exists(srcDir.resolve("markers.json"))) {
+                    Files.copy(srcDir.resolve("markers.json"), dstDir.resolve("markers.json"), StandardCopyOption.REPLACE_EXISTING);
+                }
+                if (Files.exists(srcDir.resolve("drawings.json"))) {
+                    Files.copy(srcDir.resolve("drawings.json"), dstDir.resolve("drawings.json"), StandardCopyOption.REPLACE_EXISTING);
+                }
+                if (Files.exists(srcDir.resolve("regions.json"))) {
+                    Files.copy(srcDir.resolve("regions.json"), dstDir.resolve("regions.json"), StandardCopyOption.REPLACE_EXISTING);
+                }
+                if (Files.isDirectory(srcDir.resolve("screenshots"))) {
+                    Storage.copyRecursive(srcDir.resolve("screenshots"), dstDir.resolve("screenshots"));
+                }
+
+                if (session.isLive()) {
+                    MapManager.switchLive(targetId);
+                    session = MapManager.live();
+                } else {
+                    WorldMeta meta = Storage.readJson(dstDir.resolve("meta.json"), WorldMeta.class, null);
+                    session.close();
+                    session = MapSession.open(meta != null ? meta : source);
+                }
+                WaypointShare.notifyPlayer(T.s("map.bind.markers_success", source.name != null && !source.name.isBlank() ? source.name : source.id));
+            }
+
+            if (previewMeta != null) {
+                if (parent instanceof MapScreen pMap) {
+                    pMap.overlay = Overlay.NONE;
+                    pMap.session = MapManager.live();
+                }
+                minecraft.gui.setScreen(parent);
+            } else {
+                overlay = Overlay.NONE;
+            }
+            Paper.pageTurn();
+        } catch (Exception e) {
+            Storage.LOG.error("Failed to bind map " + sourceId + " to " + targetId, e);
+        }
     }
 
     private void switchMapTo(String targetId) {
