@@ -9,6 +9,10 @@ import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.phys.Vec3;
+import org.joml.Matrix3x2fStack;
+import org.joml.Matrix4f;
+import org.joml.Vector3f;
+import org.joml.Vector3fc;
 import org.webtrade.atlasmapextended.client.data.Marker;
 import org.webtrade.atlasmapextended.client.data.ModConfig;
 import org.webtrade.atlasmapextended.client.map.MapManager;
@@ -146,7 +150,18 @@ public final class WorldMarkerHud {
             icon.uses++;
             icon.lastUsed = now;
             int tint = m.color == 0 ? alpha << 24 | 0xFFFFFF : Paper.a(m.color, alpha);
-            Paper.icon(g, icon.texture, sx - iconSize / 2, sy - iconSize / 2, iconSize, tint);
+            boolean mirrorH = m.icon != null && m.icon.startsWith("arrow");
+            if (mirrorH) {
+                Matrix3x2fStack pose = g.pose();
+                pose.pushMatrix();
+                pose.translate((float) sx, (float) sy);
+                pose.scale(-1.0f, 1.0f);
+                pose.translate((float) -sx, (float) -sy);
+                Paper.icon(g, icon.texture, sx - iconSize / 2, sy - iconSize / 2, iconSize, tint);
+                pose.popMatrix();
+            } else {
+                Paper.icon(g, icon.texture, sx - iconSize / 2, sy - iconSize / 2, iconSize, tint);
+            }
             drawn++;
 
             int hx = sx - crossX;
