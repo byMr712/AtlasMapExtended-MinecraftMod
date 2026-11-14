@@ -88,6 +88,7 @@ public class ModConfig {
     private void clamp() {
         minimapSizeIndex = Math.floorMod(minimapSizeIndex, MINIMAP_SIZES.length);
         minimapZoomIndex = Math.max(0, Math.min(MINIMAP_ZOOMS.length - 1, minimapZoomIndex));
+        framedMapsStartY = Math.max(-64, Math.min(320, framedMapsStartY));
         deathMarkers = Math.max(0, Math.min(4, deathMarkers));
         deathMarkersCreated = Math.max(0, deathMarkersCreated);
         minimapCorner = Math.floorMod(minimapCorner, 4);
