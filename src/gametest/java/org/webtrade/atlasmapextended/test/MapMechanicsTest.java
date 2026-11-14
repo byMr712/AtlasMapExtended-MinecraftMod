@@ -13,6 +13,7 @@ import org.webtrade.atlasmapextended.client.data.Stroke;
 import org.webtrade.atlasmapextended.client.data.WorldMeta;
 import org.webtrade.atlasmapextended.client.gui.ImageCache;
 import org.webtrade.atlasmapextended.client.gui.MapView;
+import org.webtrade.atlasmapextended.client.gui.Paper;
 import org.webtrade.atlasmapextended.client.gui.T;
 import org.webtrade.atlasmapextended.client.gui.Theme;
 import org.webtrade.atlasmapextended.client.map.MapLayer;
@@ -348,6 +349,8 @@ public class MapMechanicsTest implements FabricClientGameTest {
 
         WaypointShare.ParsedWaypoint wp = WaypointShare.parse(shareStr);
         check(wp != null, "waypoint parse non-null");
+        check(Paper.marker("arrow").getPath().endsWith("arrow_n.png"), "arrow marker alias resolves to arrow_n");
+        check(Paper.marker("arrow_n_blue").getPath().endsWith("arrow_n.png"), "arrow_n_blue marker alias resolves to arrow_n");
         check("Base Camp".equals(wp.name), "waypoint parse name");
         check(wp.x == 120 && wp.y == 65 && wp.z == -300, "waypoint parse coords");
         check("minecraft:overworld".equals(wp.dim), "waypoint parse dim");
