@@ -12,6 +12,7 @@
     "HudMixin",
     "ItemFrameRendererMixin",
     "LanguageManagerMixin",
+    "LevelStorageAccessMixin",
     "MapItemSavedDataAccessor",
     "MinecraftMixin",
     "OptionsMixin",

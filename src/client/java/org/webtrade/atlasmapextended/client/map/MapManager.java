@@ -258,6 +258,38 @@ public final class MapManager {
         return resolveDefaultServerId(sd);
     }
 
+    
+    public static void onDeleteSingleplayerWorld(String folder) {
+        if (folder == null || folder.isBlank()) {
+            return;
+        }
+        String worldId = "local_" + Storage.sanitize(folder);
+        archiveWorld(worldId, "Deleted");
+    }
+
+    public static void archiveWorld(String worldId, String reasonTag) {
+        Path worldDir = Storage.worldDir(worldId);
+        if (!Files.isDirectory(worldDir)) {
+            return;
+        }
+        try {
+            String archiveId = worldId + "_old_" + System.currentTimeMillis();
+            Path archiveDir = Storage.worldDir(archiveId);
+            Files.move(worldDir, archiveDir);
+            WorldMeta old = Storage.readJson(archiveDir.resolve("meta.json"), WorldMeta.class, null);
+            if (old != null) {
+                old.id = archiveId;
+                if (old.name != null && !old.name.isBlank()) {
+                    old.name = old.name + " (" + (reasonTag != null ? reasonTag : "Old") + ")";
+                }
+                Storage.writeJson(archiveDir.resolve("meta.json"), old);
+            }
+            Storage.LOG.info("Archived world map " + worldId + " to " + archiveId + " (" + reasonTag + ")");
+        } catch (Exception e) {
+            Storage.LOG.error("Failed to archive world map " + worldId, e);
+        }
+    }
+
     public static void switchLive(String newWorldId) {
         Minecraft mc = Minecraft.getInstance();
         if (live == null || !live.isLive()) {
@@ -296,6 +328,51 @@ public final class MapManager {
             meta.name = sp.getWorldData().getLevelName();
             meta.address = folder;
             meta.type = WorldMeta.LOCAL;
+
+            long currentSeed = 0L;
+            try {
+                if (sp.overworld() != null) {
+                    currentSeed = sp.overworld().getSeed();
+                }
+            } catch (Exception ignored) {
+            }
+            meta.seed = currentSeed;
+
+            Path uidFile = root.resolve(".atlasmap_uid");
+            String currentUid = null;
+            if (Files.exists(uidFile)) {
+                try {
+                    currentUid = Files.readString(uidFile).trim();
+                } catch (Exception ignored) {
+                }
+            }
+
+            Path worldDir = Storage.worldDir(meta.id);
+            WorldMeta old = Storage.readJson(worldDir.resolve("meta.json"), WorldMeta.class, null);
+            boolean recreated = false;
+            if (old != null) {
+                if (old.seed != 0L && currentSeed != 0L && old.seed != currentSeed) {
+                    recreated = true;
+                } else if (old.uid != null && !old.uid.isBlank() && (currentUid == null || !currentUid.equals(old.uid))) {
+                    recreated = true;
+                }
+            }
+
+            if (recreated) {
+                archiveWorld(meta.id, "Old Seed");
+                if (Files.isDirectory(worldDir)) {
+                    meta.id = meta.id + "_" + (currentSeed != 0 ? Math.abs(currentSeed % 100000) : System.currentTimeMillis() % 100000);
+                }
+            }
+
+            if (currentUid == null || currentUid.isBlank()) {
+                currentUid = java.util.UUID.randomUUID().toString();
+                try {
+                    Files.writeString(uidFile, currentUid);
+                } catch (Exception ignored) {
+                }
+            }
+            meta.uid = currentUid;
         } else {
             if (sd == null && mc.getConnection() != null) {
                 sd = mc.getConnection().getServerData();
