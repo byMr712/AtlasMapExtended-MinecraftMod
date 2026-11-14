@@ -79,6 +79,8 @@ public final class WorldMarkerHud {
             visibleLastFrame = false;
             return;
         }
+        double camMapAngle = (p.getYRot() + 180.0) % 360.0;
+        if (camMapAngle < 0) camMapAngle += 360.0;
         String dim = mc.level.dimension().location().toString();
         Vec3 eye = p.getEyePosition();
 
@@ -142,16 +144,12 @@ public final class WorldMarkerHud {
                 scale = 0.65 + 0.35 * (dist - 10.0) / 30.0;
             }
             int iconSize = (int) Math.round(ICON_SIZE * scale);
-            IconEntry icon = iconEntry(m.icon, m.color != 0, now);
+            String iconName = adaptedArrow(m.icon, camMapAngle);
+            IconEntry icon = iconEntry(iconName, m.color != 0, now);
             icon.uses++;
             icon.lastUsed = now;
             int tint = m.color == 0 ? alpha << 24 | 0xFFFFFF : Paper.a(m.color, alpha);
-            boolean mirrorH = m.icon != null && (m.icon.startsWith("arrow") || "arrow".equals(m.icon));
-            if (mirrorH) {
-                Paper.iconMirroredH(g, icon.texture, sx - iconSize / 2, sy - iconSize / 2, iconSize, tint);
-            } else {
-                Paper.icon(g, icon.texture, sx - iconSize / 2, sy - iconSize / 2, iconSize, tint);
-            }
+            Paper.icon(g, icon.texture, sx - iconSize / 2, sy - iconSize / 2, iconSize, tint);
             drawn++;
 
             int hx = sx - crossX;
@@ -194,7 +192,7 @@ public final class WorldMarkerHud {
     }
 
     private static void drawName(GuiGraphics g, Font font, Marker m, double distance, int sx, int sy, int sw, int sh) {
-        String name = m.name == null || m.name.isBlank() ? T.s("marker.unnamed") : m.name;
+        String name = m.name == null || m.name.isBlank() ? T.s("marker.unnamed") : m.name.trim();
         name = font.plainSubstrByWidth(name, Math.min(180, sw - 12));
         String dist = T.s("marker.distance", Math.round(distance));
         int nameW = font.width(name);
@@ -231,6 +229,44 @@ public final class WorldMarkerHud {
             Paper.release(entry.texture);
         }
         ICONS.clear();
+    }
+
+    private static final String[] ARROW_NAMES = {
+            "arrow_n", "arrow_ne", "arrow_e", "arrow_se",
+            "arrow_s", "arrow_sw", "arrow_w", "arrow_nw"
+    };
+
+    private static int arrowAngle(String icon) {
+        if (icon == null || icon.isBlank()) return -1;
+        String name = "arrow".equals(icon) ? "arrow_n" : icon;
+        T.Alias alias = T.ALIASES.get(name);
+        if (alias != null) {
+            name = alias.icon();
+        }
+        return switch (name) {
+            case "arrow_n" -> 0;
+            case "arrow_ne" -> 45;
+            case "arrow_e" -> 90;
+            case "arrow_se" -> 135;
+            case "arrow_s" -> 180;
+            case "arrow_sw" -> 225;
+            case "arrow_w" -> 270;
+            case "arrow_nw" -> 315;
+            default -> -1;
+        };
+    }
+
+    private static String adaptedArrow(String icon, double camMapAngle) {
+        int arrowAngle = arrowAngle(icon);
+        if (arrowAngle < 0) {
+            return icon;
+        }
+        double relAngle = (arrowAngle - camMapAngle) % 360.0;
+        if (relAngle < 0) {
+            relAngle += 360.0;
+        }
+        int octant = (int) Math.floor((relAngle + 22.5) / 45.0) & 7;
+        return ARROW_NAMES[octant];
     }
 
     private static final class IconEntry {

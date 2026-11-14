@@ -537,43 +537,43 @@
   },
   {
    "id": "arrow_n",
-   "ru": "Красная стрелка вверх",
-   "en": "Red arrow up"
+   "ru": "Стрелка вверх",
+   "en": "Arrow up"
   },
   {
    "id": "arrow_ne",
-   "ru": "Красная стрелка вверх-вправо",
-   "en": "Red arrow up-right"
+   "ru": "Стрелка вверх-вправо",
+   "en": "Arrow up-right"
   },
   {
    "id": "arrow_e",
-   "ru": "Красная стрелка вправо",
-   "en": "Red arrow right"
+   "ru": "Стрелка вправо",
+   "en": "Arrow right"
   },
   {
    "id": "arrow_se",
-   "ru": "Красная стрелка вниз-вправо",
-   "en": "Red arrow down-right"
+   "ru": "Стрелка вниз-вправо",
+   "en": "Arrow down-right"
   },
   {
    "id": "arrow_s",
-   "ru": "Красная стрелка вниз",
-   "en": "Red arrow down"
+   "ru": "Стрелка вниз",
+   "en": "Arrow down"
   },
   {
    "id": "arrow_sw",
-   "ru": "Красная стрелка вниз-влево",
-   "en": "Red arrow down-left"
+   "ru": "Стрелка вниз-влево",
+   "en": "Arrow down-left"
   },
   {
    "id": "arrow_w",
-   "ru": "Красная стрелка влево",
-   "en": "Red arrow left"
+   "ru": "Стрелка влево",
+   "en": "Arrow left"
   },
   {
    "id": "arrow_nw",
-   "ru": "Красная стрелка вверх-влево",
-   "en": "Red arrow up-left"
+   "ru": "Стрелка вверх-влево",
+   "en": "Arrow up-left"
   },
   {
    "id": "num_1",
