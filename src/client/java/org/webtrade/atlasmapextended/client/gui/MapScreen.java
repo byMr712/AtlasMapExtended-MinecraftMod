@@ -379,7 +379,7 @@ public class MapScreen extends Screen {
                 .setShowBackground(false)
                 .setShowDecorations(false)
                 .setPlaceholder(T.tr("field.desc_hint"))
-                .build(font, 100, 60, T.tr("field.desc"));
+                .build(font, panelWidth() - 20, 60, T.tr("field.desc"));
         descBox.setCharacterLimit(4000);
         descBox.setValueListener(s -> {
             if (working != null) {
@@ -487,6 +487,37 @@ public class MapScreen extends Screen {
             fillWidgets();
         }
         updateWidgetVisibility();
+    }
+
+    private void updateDescBoxBounds(int x, int y, int w, int h) {
+        if (descBox.getWidth() != w) {
+            String val = descBox.getValue();
+            boolean focused = descBox.isFocused();
+            removeWidget(descBox);
+            descBox = MultiLineEditBox.builder()
+                    .setTextColor(Paper.INK)
+                    .setCursorColor(Paper.INK)
+                    .setTextShadow(false)
+                    .setShowBackground(false)
+                    .setShowDecorations(false)
+                    .setPlaceholder(T.tr("field.desc_hint"))
+                    .build(font, w, h, T.tr("field.desc"));
+            descBox.setCharacterLimit(4000);
+            descBox.setValueListener(s -> {
+                if (working != null) {
+                    working.description = s;
+                }
+            });
+            descBox.setValue(val);
+            descBox.visible = panel == Panel.EDIT && working != null;
+            addRenderableWidget(descBox);
+            if (focused) {
+                setFocused(descBox);
+            }
+        }
+        descBox.setX(x);
+        descBox.setY(y);
+        descBox.setHeight(h);
     }
 
     private EditBox coordBox() {
@@ -1834,10 +1865,7 @@ public class MapScreen extends Screen {
         y += 10;
         int descH = Math.max(40, Math.min(90, (int) (ph * 0.22)));
         Paper.inset(g, cx, y, cw, descH);
-        descBox.setX(cx + 1);
-        descBox.setY(y + 1);
-        descBox.setWidth(cw - 2);
-        descBox.setHeight(descH - 2);
+        updateDescBoxBounds(cx + 1, y + 1, cw - 2, descH - 2);
         y += descH + 6;
 
         int buttonsY = py + ph - 8 - 16;
@@ -3845,10 +3873,7 @@ public class MapScreen extends Screen {
         y += 10;
         int descH = Math.max(36, Math.min(80, (int) (ph * 0.2)));
         Paper.inset(g, cx, y, cw, descH);
-        descBox.setX(cx + 1);
-        descBox.setY(y + 1);
-        descBox.setWidth(cw - 2);
-        descBox.setHeight(descH - 2);
+        updateDescBoxBounds(cx + 1, y + 1, cw - 2, descH - 2);
         y += descH + 6;
 
         int buttonsY = py + ph - 8 - 16 * 2 - 4;
