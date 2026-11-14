@@ -1,6 +1,7 @@
 package org.webtrade.atlasmapextended.mixin.client;
 
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.network.protocol.game.ClientboundLoginPacket;
 import net.minecraft.network.protocol.game.ClientboundMapItemDataPacket;
@@ -15,10 +16,25 @@ import org.webtrade.atlasmapextended.client.framed3d.FramedOverlayStorage;
 import org.webtrade.atlasmapextended.client.map.HeldMapTextures;
 import org.webtrade.atlasmapextended.client.map.MapLocationResolver;
 import org.webtrade.atlasmapextended.client.map.MapManager;
+import org.webtrade.atlasmapextended.client.map.WaypointShare;
 
-/** Replaces Fabric API's join and disconnect events. */
+/** Replaces Fabric API's join and disconnect events and handles shared waypoint commands. */
 @Mixin(ClientPacketListener.class)
 public class ClientPacketListenerMixin {
+
+    @Inject(method = "sendCommand", at = @At("HEAD"), cancellable = true)
+    private void atlasmapextended$onSendCommand(String command, CallbackInfo ci) {
+        if (WaypointShare.handleCommand(command)) {
+            ci.cancel();
+        }
+    }
+
+    @Inject(method = "sendUnattendedCommand", at = @At("HEAD"), cancellable = true, require = 0)
+    private void atlasmapextended$onSendUnattendedCommand(String command, Screen screen, CallbackInfo ci) {
+        if (WaypointShare.handleCommand(command)) {
+            ci.cancel();
+        }
+    }
 
     @Inject(method = "handleLogin", at = @At("TAIL"))
     private void atlasmapextended$handleLogin(ClientboundLoginPacket packet, CallbackInfo ci) {

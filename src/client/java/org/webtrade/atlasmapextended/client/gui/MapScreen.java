@@ -9,6 +9,9 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.CharacterEvent;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.client.multiplayer.PlayerInfo;
+import net.minecraft.client.multiplayer.ClientPacketListener;
+import org.webtrade.atlasmapextended.client.map.WaypointShare;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.network.chat.Component;
@@ -85,7 +88,7 @@ public class MapScreen extends Screen {
 
     private enum Panel { NONE, VIEW, EDIT }
 
-    private enum Overlay { NONE, ICONS, COLOR, PICKER, VIEWER, CONFIRM, DIMS, REGION, REGION_COLOR }
+    private enum Overlay { NONE, ICONS, COLOR, PICKER, VIEWER, CONFIRM, DIMS, REGION, REGION_COLOR, SHARE }
 
     private record Hit(int x, int y, int w, int h, Runnable left, Runnable right) {
     }
@@ -174,6 +177,9 @@ public class MapScreen extends Screen {
     private Marker colorMarker;
     private Region colorRegion;
     private EditBox iconSearch;
+    private Marker shareMarker;
+    private EditBox shareCommentBox;
+    private double sharePlayerScroll;
 
     // widgets
     private EditBox nameBox;
@@ -400,6 +406,12 @@ public class MapScreen extends Screen {
         regionNameBox.setTextShadow(false);
         regionNameBox.setMaxLength(48);
         addWidget(regionNameBox);
+        shareCommentBox = new EditBox(font, 0, 0, 100, 12, T.tr("marker.share.comment_hint"));
+        shareCommentBox.setBordered(false);
+        shareCommentBox.setTextColor(Paper.INK);
+        shareCommentBox.setTextShadow(false);
+        shareCommentBox.setMaxLength(128);
+        addWidget(shareCommentBox);
         if (working != null) {
             fillWidgets();
         }
@@ -550,6 +562,7 @@ public class MapScreen extends Screen {
                 case CONFIRM -> drawConfirm(g, mx, my);
                 case DIMS -> drawDims(g, mx, my);
                 case REGION -> drawRegionEditor(g, mx, my);
+                case SHARE -> drawShareOverlay(g, mx, my);
                 default -> {
                 }
             }
@@ -1532,38 +1545,48 @@ public class MapScreen extends Screen {
         y += 5;
 
         boolean tp = cfg.teleport && session.isLive();
-        int rows = tp ? 3 : 2;
+        int rows = tp ? 4 : 3;
         int buttonsY = py + ph - 8 - 16 * rows - 4 * (rows - 1);
         g.text(font, T.tr("field.shots", m.screenshots.size()), cx, y, Paper.INK_SOFT, false);
         y += 11;
         drawShotGrid(g, mx, my, m, cx, y, cw, buttonsY - 6 - y, false);
 
         int bw = (cw - 4) / 2;
-        int y2 = buttonsY + 20;
-        boolean h2 = overlay == Overlay.NONE && Paper.inside(mx, my, cx, y2, bw, 16);
-        Paper.iconTextButton(g, font, Paper.tool("trash"), T.tr("button.delete"), cx, y2, bw, 16, h2, true);
-        hit(cx, y2, bw, 16, () -> confirmDelete(m));
-        boolean h1 = overlay == Overlay.NONE && Paper.inside(mx, my, cx + bw + 4, y2, bw, 16);
-        Paper.iconTextButton(g, font, Paper.tool("gear"), T.tr("button.configure"), cx + bw + 4, y2, bw, 16, h1, true);
-        if (h1) {
-            tooltip = T.tr("button.configure_tip");
-        }
-        hit(cx + bw + 4, y2, bw, 16, () -> openEdit(m, false));
-        y2 = buttonsY;
-        boolean h3 = overlay == Overlay.NONE && Paper.inside(mx, my, cx, y2, bw, 16);
-        Paper.iconTextButton(g, font, Paper.tool(m.hidden ? "eye" : "eye_off"), T.tr(m.hidden ? "marker.show" : "marker.hide"), cx, y2, bw, 16, h3, true);
-        hit(cx, y2, bw, 16, () -> {
+        int y0 = buttonsY;
+        boolean h0L = overlay == Overlay.NONE && Paper.inside(mx, my, cx, y0, bw, 16);
+        Paper.iconTextButton(g, font, Paper.tool(m.hidden ? "eye" : "eye_off"), T.tr(m.hidden ? "marker.show" : "marker.hide"), cx, y0, bw, 16, h0L, true);
+        hit(cx, y0, bw, 16, () -> {
             m.hidden = !m.hidden;
             session.saveMarkers();
         });
-        boolean h4 = overlay == Overlay.NONE && Paper.inside(mx, my, cx + bw + 4, y2, bw, 16);
-        Paper.iconTextButton(g, font, Paper.tool("target"), T.tr("button.goto"), cx + bw + 4, y2, bw, 16, h4, true);
-        hit(cx + bw + 4, y2, bw, 16, () -> centerOn(m));
+        boolean h0R = overlay == Overlay.NONE && Paper.inside(mx, my, cx + bw + 4, y0, bw, 16);
+        Paper.iconTextButton(g, font, Paper.tool("target"), T.tr("button.goto"), cx + bw + 4, y0, bw, 16, h0R, true);
+        hit(cx + bw + 4, y0, bw, 16, () -> centerOn(m));
+
+        int y1 = buttonsY + 20;
+        boolean h1L = overlay == Overlay.NONE && Paper.inside(mx, my, cx, y1, bw, 16);
+        Paper.iconTextButton(g, font, Paper.tool("quill"), T.tr("button.share"), cx, y1, bw, 16, h1L, true);
+        if (h1L) {
+            tooltip = T.tr("button.share_tip");
+        }
+        hit(cx, y1, bw, 16, () -> openShare(m));
+        boolean h1R = overlay == Overlay.NONE && Paper.inside(mx, my, cx + bw + 4, y1, bw, 16);
+        Paper.iconTextButton(g, font, Paper.tool("gear"), T.tr("button.configure"), cx + bw + 4, y1, bw, 16, h1R, true);
+        if (h1R) {
+            tooltip = T.tr("button.configure_tip");
+        }
+        hit(cx + bw + 4, y1, bw, 16, () -> openEdit(m, false));
+
+        int y2 = buttonsY + 40;
+        boolean h2 = overlay == Overlay.NONE && Paper.inside(mx, my, cx, y2, cw, 16);
+        Paper.iconTextButton(g, font, Paper.tool("trash"), T.tr("button.delete"), cx, y2, cw, 16, h2, true);
+        hit(cx, y2, cw, 16, () -> confirmDelete(m));
+
         if (tp) {
-            int y3 = buttonsY + 40;
-            boolean h5 = overlay == Overlay.NONE && Paper.inside(mx, my, cx, y3, cw, 16);
-            Paper.iconTextButton(g, font, Paper.tool("arrow"), T.tr("button.teleport"), cx, y3, cw, 16, h5, true);
-            if (h5) {
+            int y3 = buttonsY + 60;
+            boolean h3 = overlay == Overlay.NONE && Paper.inside(mx, my, cx, y3, cw, 16);
+            Paper.iconTextButton(g, font, Paper.tool("arrow"), T.tr("button.teleport"), cx, y3, cw, 16, h3, true);
+            if (h3) {
                 tooltip = T.tr("button.teleport_tip");
             }
             hit(cx, y3, cw, 16, () -> teleportTo(m));
@@ -2394,6 +2417,157 @@ public class MapScreen extends Screen {
         hit(bx2, by, bw, 16, () -> overlay = Overlay.NONE);
     }
 
+    private void openShare(Marker m) {
+        shareMarker = m;
+        sharePlayerScroll = 0;
+        overlay = Overlay.SHARE;
+        if (shareCommentBox != null) {
+            shareCommentBox.setValue("");
+            setFocused(shareCommentBox);
+        }
+    }
+
+    private void drawShareOverlay(GuiGraphicsExtractor g, int mx, int my) {
+        if (shareMarker == null) {
+            overlay = Overlay.NONE;
+            return;
+        }
+        Minecraft mc = Minecraft.getInstance();
+        blocker(() -> overlay = Overlay.NONE);
+        g.fill(0, 0, width, height, Paper.DIM);
+
+        int ow = Math.min(260, width - 20);
+        int oh = Math.min(230, height - 20);
+        int ox = (width - ow) / 2;
+        int oy = (height - oh) / 2;
+
+        Paper.panel(g, ox, oy, ow, oh);
+        hit(ox, oy, ow, oh, () -> {});
+        closeButton(g, mx, my, ox + ow - 18, oy + 5, () -> overlay = Overlay.NONE);
+
+        Paper.title(g, font, T.s("marker.share.title"), ox + ow / 2, oy + 8);
+
+        int cx = ox + 12;
+        int cw = ow - 24;
+        int y = oy + 22;
+
+        String name = shareMarker.name.isBlank() ? T.s("marker.unnamed") : shareMarker.name;
+        String preview = name + " (" + shareMarker.x + ", " + shareMarker.y + ", " + shareMarker.z + ")";
+        g.text(font, font.plainSubstrByWidth(preview, cw), cx, y, Paper.INK, false);
+        y += 12;
+
+        g.text(font, T.tr("marker.share.comment"), cx, y, Paper.INK_SOFT, false);
+        y += 10;
+        Paper.inset(g, cx, y, cw, 14);
+        if (shareCommentBox != null) {
+            shareCommentBox.setX(cx + 2);
+            shareCommentBox.setY(y + 2);
+            shareCommentBox.setWidth(cw - 4);
+            shareCommentBox.setHeight(10);
+            shareCommentBox.visible = true;
+            shareCommentBox.extractRenderState(g, mx, my, 0);
+        }
+        y += 18;
+
+        // Button: Everyone in chat
+        boolean hAll = overlay == Overlay.SHARE && Paper.inside(mx, my, cx, y, cw, 16);
+        Paper.iconTextButton(g, font, Paper.tool("globe"), T.tr("marker.share.everyone"), cx, y, cw, 16, hAll, true);
+        hit(cx, y, cw, 16, () -> {
+            sendShare(shareMarker, "*", false);
+            overlay = Overlay.NONE;
+        });
+        y += 20;
+
+        // Button: Copy to clipboard
+        int hw = (cw - 4) / 2;
+        boolean hCopy = overlay == Overlay.SHARE && Paper.inside(mx, my, cx, y, hw, 16);
+        Paper.iconTextButton(g, font, Paper.tool("quill"), T.tr("marker.share.copy"), cx, y, hw, 16, hCopy, true);
+        hit(cx, y, hw, 16, () -> {
+            copyShare(shareMarker);
+            overlay = Overlay.NONE;
+        });
+
+        // Button: Cancel
+        boolean hCancel = overlay == Overlay.SHARE && Paper.inside(mx, my, cx + hw + 4, y, hw, 16);
+        Paper.iconTextButton(g, font, Paper.tool("close"), T.tr("button.cancel"), cx + hw + 4, y, hw, 16, hCancel, true);
+        hit(cx + hw + 4, y, hw, 16, () -> overlay = Overlay.NONE);
+        y += 22;
+
+        // Online players list
+        ClientPacketListener conn = mc.getConnection();
+        List<PlayerInfo> players = new ArrayList<>();
+        if (conn != null) {
+            String selfName = mc.player != null ? mc.player.getGameProfile().name() : "";
+            for (PlayerInfo p : conn.getOnlinePlayers()) {
+                String pname = p.getProfile().name();
+                if (!pname.equalsIgnoreCase(selfName)) {
+                    players.add(p);
+                }
+            }
+        }
+
+        if (!players.isEmpty()) {
+            g.text(font, T.tr("marker.share.players"), cx, y, Paper.INK_SOFT, false);
+            y += 10;
+            int listH = oy + oh - 8 - y;
+            if (listH > 20) {
+                Paper.inset(g, cx, y, cw, listH);
+                int rowH = 15;
+                int totalH = players.size() * rowH;
+                double maxScroll = Math.max(0, totalH - listH + 2);
+                sharePlayerScroll = Math.max(0, Math.min(maxScroll, sharePlayerScroll));
+                scroll(cx, y, cw, listH, d -> sharePlayerScroll -= d * 15);
+
+                g.enableScissor(cx + 1, y + 1, cx + cw - 1, y + listH - 1);
+                int ry = y + 2 - (int) sharePlayerScroll;
+                for (PlayerInfo p : players) {
+                    if (ry + rowH >= y && ry <= y + listH) {
+                        String pname = p.getProfile().name();
+                        boolean hr = overlay == Overlay.SHARE && Paper.inside(mx, my, cx + 2, ry, cw - 4, rowH - 1)
+                                && my >= y && my <= y + listH;
+                        if (hr) {
+                            g.fill(cx + 2, ry, cx + cw - 2, ry + rowH - 1, 0x20000000);
+                        }
+                        g.text(font, pname, cx + 6, ry + 3, hr ? Paper.GOLD : Paper.INK, false);
+                        hit(cx + 2, ry, cw - 4, rowH - 1, () -> {
+                            sendShare(shareMarker, pname, true);
+                            overlay = Overlay.NONE;
+                        });
+                    }
+                    ry += rowH;
+                }
+                g.disableScissor();
+            }
+        }
+    }
+
+    private void sendShare(Marker m, String target, boolean whisper) {
+        Minecraft mc = Minecraft.getInstance();
+        String sender = mc.player != null ? mc.player.getGameProfile().name() : "";
+        String shareStr = WaypointShare.toShareString(m, sender, target);
+        String comment = shareCommentBox != null ? shareCommentBox.getValue().trim() : "";
+        String fullMsg = comment.isEmpty() ? shareStr : comment + " " + shareStr;
+        if (mc.player != null && mc.player.connection != null) {
+            if (whisper) {
+                mc.player.connection.sendCommand("msg " + target + " " + fullMsg);
+                WaypointShare.notifyPlayer(T.s("marker.share.sent_to", target));
+            } else {
+                mc.player.connection.sendChat(fullMsg);
+                WaypointShare.notifyPlayer(T.s("marker.share.sent"));
+            }
+        }
+    }
+
+    private void copyShare(Marker m) {
+        Minecraft mc = Minecraft.getInstance();
+        String sender = mc.player != null ? mc.player.getGameProfile().name() : "";
+        String shareStr = WaypointShare.toShareString(m, sender, "*");
+        String comment = shareCommentBox != null ? shareCommentBox.getValue().trim() : "";
+        String fullMsg = comment.isEmpty() ? shareStr : comment + " " + shareStr;
+        mc.keyboardHandler.setClipboard(fullMsg);
+        WaypointShare.notifyPlayer(T.s("marker.share.copied"));
+    }
+
     private void drawDims(GuiGraphicsExtractor g, int mx, int my) {
         blocker(() -> overlay = Overlay.NONE);
         List<String> dims = session.knownDims();
@@ -2885,6 +3059,7 @@ public class MapScreen extends Screen {
         regionSearchBox.setVisible(listOpen && !globalSearch && regionsOpen);
         iconSearch.setVisible(overlay == Overlay.ICONS);
         regionNameBox.setVisible(overlay == Overlay.REGION);
+        if (shareCommentBox != null) shareCommentBox.setVisible(overlay == Overlay.SHARE);
         GuiEventListener f = getFocused();
         if (f instanceof EditBox e && !e.isVisible() || f instanceof MultiLineEditBox b && !b.visible) {
             setFocused(null);
@@ -3692,6 +3867,17 @@ public class MapScreen extends Screen {
     @Override
     public boolean keyPressed(KeyEvent e) {
         int key = e.key();
+        if (overlay == Overlay.SHARE) {
+            if (key == InputConstants.KEY_RETURN || key == InputConstants.KEY_NUMPADENTER) {
+                sendShare(shareMarker, "*", false);
+                overlay = Overlay.NONE;
+            } else if (e.isEscape()) {
+                overlay = Overlay.NONE;
+            } else if (shareCommentBox != null) {
+                shareCommentBox.keyPressed(e);
+            }
+            return true;
+        }
         if (overlay == Overlay.CONFIRM) {
             if (key == InputConstants.KEY_RETURN || key == InputConstants.KEY_NUMPADENTER) {
                 overlay = Overlay.NONE;
@@ -3818,6 +4004,13 @@ public class MapScreen extends Screen {
 
     @Override
     public boolean charTyped(CharacterEvent e) {
+        if (overlay == Overlay.SHARE) {
+            if (shareCommentBox != null) {
+                setFocused(shareCommentBox);
+                return shareCommentBox.charTyped(e);
+            }
+            return true;
+        }
         if (overlay == Overlay.ICONS) {
             setFocused(iconSearch);
             return iconSearch.charTyped(e);
