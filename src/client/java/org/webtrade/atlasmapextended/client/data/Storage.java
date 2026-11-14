@@ -20,6 +20,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
 /** File layout and JSON helpers. Everything lives in {@code .minecraft/atlasmapextended/}. */
@@ -33,6 +34,13 @@ public final class Storage {
         t.setDaemon(true);
         return t;
     });
+
+    public static void flushIO() {
+        try {
+            IO.submit(() -> {}).get(3, TimeUnit.SECONDS);
+        } catch (Exception ignored) {
+        }
+    }
 
     private Storage() {
     }
