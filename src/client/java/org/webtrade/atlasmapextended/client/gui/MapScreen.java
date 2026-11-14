@@ -2440,13 +2440,13 @@ public class MapScreen extends Screen {
         hit(ox, oy, ow, oh, () -> {});
         closeButton(g, mx, my, ox + ow - 18, oy + 5, () -> overlay = Overlay.NONE);
 
-        Paper.title(g, font, T.s("marker.share.title"), ox + ow / 2, oy + 8);
+        Paper.title(g, font, T.s(regionMode ? "region.share.title" : "marker.share.title"), ox + ow / 2, oy + 8);
 
         int cx = ox + 12;
         int cw = ow - 24;
         int y = oy + 22;
 
-        String name = shareMarker.name.isBlank() ? T.s("marker.unnamed") : shareMarker.name;
+        String name = shareMarker.name.isBlank() ? (regionMode ? T.s("region.title") : T.s("marker.unnamed")) : shareMarker.name;
         String preview = name + " (" + shareMarker.x + ", " + shareMarker.y + ", " + shareMarker.z + ")";
         g.text(font, font.plainSubstrByWidth(preview, cw), cx, y, Paper.INK, false);
         y += 12;
@@ -2545,10 +2545,10 @@ public class MapScreen extends Screen {
         if (mc.player != null && mc.player.connection != null) {
             if (whisper) {
                 mc.player.connection.sendCommand("msg " + target + " " + fullMsg);
-                WaypointShare.notifyPlayer(T.s("marker.share.sent_to", target));
+                WaypointShare.notifyPlayer(T.s(regionMode ? "region.share.sent_to" : "marker.share.sent_to", target));
             } else {
                 mc.player.connection.sendChat(fullMsg);
-                WaypointShare.notifyPlayer(T.s("marker.share.sent"));
+                WaypointShare.notifyPlayer(T.s(regionMode ? "region.share.sent" : "marker.share.sent"));
             }
         }
     }
@@ -2560,7 +2560,7 @@ public class MapScreen extends Screen {
         String comment = shareCommentBox != null ? shareCommentBox.getValue().trim() : "";
         String fullMsg = comment.isEmpty() ? shareStr : comment + " " + shareStr;
         mc.keyboardHandler.setClipboard(fullMsg);
-        WaypointShare.notifyPlayer(T.s("marker.share.copied"));
+        WaypointShare.notifyPlayer(T.s(regionMode ? "region.share.copied" : "marker.share.copied"));
     }
 
     private void drawDims(GuiGraphicsExtractor g, int mx, int my) {
@@ -3441,7 +3441,7 @@ public class MapScreen extends Screen {
     private Marker regionProxy(Region r) {
         Marker m = new Marker();
         m.id = r.id;
-        m.name = r.name;
+        m.name = r.name.isBlank() ? T.s("region.title") : r.name;
         m.description = r.description;
         m.color = r.color;
         m.dim = r.dim;
@@ -3569,36 +3569,49 @@ public class MapScreen extends Screen {
         y += 5;
 
         boolean tp = cfg.teleport && session.isLive();
-        int rows = tp ? 3 : 2;
+        int rows = tp ? 4 : 3;
         int buttonsY = py + ph - 8 - 16 * rows - 4 * (rows - 1);
         g.text(font, T.tr("field.shots", r.screenshots.size()), cx, y, Paper.INK_SOFT, false);
         y += 11;
         drawShotGrid(g, mx, my, selected, cx, y, cw, buttonsY - 6 - y, false);
 
         int bw = (cw - 4) / 2;
-        int y2 = buttonsY + 20;
-        boolean h2 = overlay == Overlay.NONE && Paper.inside(mx, my, cx, y2, bw, 16);
-        Paper.iconTextButton(g, font, Paper.tool("trash"), T.tr("button.delete"), cx, y2, bw, 16, h2, true);
-        hit(cx, y2, bw, 16, this::confirmDeleteRegion);
-        boolean h1 = overlay == Overlay.NONE && Paper.inside(mx, my, cx + bw + 4, y2, bw, 16);
-        Paper.iconTextButton(g, font, Paper.tool("gear"), T.tr("button.configure"), cx + bw + 4, y2, bw, 16, h1, true);
-        hit(cx + bw + 4, y2, bw, 16, () -> openRegionEdit(r));
-        y2 = buttonsY;
-        boolean h3 = overlay == Overlay.NONE && Paper.inside(mx, my, cx, y2, bw, 16);
+        int y0 = buttonsY;
+        boolean h0L = overlay == Overlay.NONE && Paper.inside(mx, my, cx, y0, bw, 16);
         Paper.iconTextButton(g, font, Paper.tool(r.hidden ? "eye" : "eye_off"),
-                T.tr(r.hidden ? "marker.show" : "marker.hide"), cx, y2, bw, 16, h3, true);
-        hit(cx, y2, bw, 16, () -> {
+                T.tr(r.hidden ? "marker.show" : "marker.hide"), cx, y0, bw, 16, h0L, true);
+        hit(cx, y0, bw, 16, () -> {
             r.hidden = !r.hidden;
             selected.hidden = r.hidden;
             session.saveRegions();
         });
-        boolean h4 = overlay == Overlay.NONE && Paper.inside(mx, my, cx + bw + 4, y2, bw, 16);
-        Paper.iconTextButton(g, font, Paper.tool("target"), T.tr("button.goto"), cx + bw + 4, y2, bw, 16, h4, true);
-        hit(cx + bw + 4, y2, bw, 16, () -> centerOn(selected));
+        boolean h0R = overlay == Overlay.NONE && Paper.inside(mx, my, cx + bw + 4, y0, bw, 16);
+        Paper.iconTextButton(g, font, Paper.tool("target"), T.tr("button.goto"), cx + bw + 4, y0, bw, 16, h0R, true);
+        hit(cx + bw + 4, y0, bw, 16, () -> centerOn(selected));
+
+        int y1 = buttonsY + 20;
+        boolean h1L = overlay == Overlay.NONE && Paper.inside(mx, my, cx, y1, bw, 16);
+        Paper.iconTextButton(g, font, Paper.tool("quill"), T.tr("button.share"), cx, y1, bw, 16, h1L, true);
+        if (h1L) {
+            tooltip = T.tr("button.share_tip");
+        }
+        hit(cx, y1, bw, 16, () -> openShare(selected != null ? selected : regionProxy(r)));
+        boolean h1R = overlay == Overlay.NONE && Paper.inside(mx, my, cx + bw + 4, y1, bw, 16);
+        Paper.iconTextButton(g, font, Paper.tool("gear"), T.tr("button.configure"), cx + bw + 4, y1, bw, 16, h1R, true);
+        if (h1R) {
+            tooltip = T.tr("button.configure_tip");
+        }
+        hit(cx + bw + 4, y1, bw, 16, () -> openRegionEdit(r));
+
+        int y2 = buttonsY + 40;
+        boolean h2 = overlay == Overlay.NONE && Paper.inside(mx, my, cx, y2, cw, 16);
+        Paper.iconTextButton(g, font, Paper.tool("trash"), T.tr("button.delete"), cx, y2, cw, 16, h2, true);
+        hit(cx, y2, cw, 16, this::confirmDeleteRegion);
+
         if (tp) {
-            int y3 = buttonsY + 40;
-            boolean h5 = overlay == Overlay.NONE && Paper.inside(mx, my, cx, y3, cw, 16);
-            Paper.iconTextButton(g, font, Paper.tool("arrow"), T.tr("button.teleport"), cx, y3, cw, 16, h5, true);
+            int y3 = buttonsY + 60;
+            boolean h3 = overlay == Overlay.NONE && Paper.inside(mx, my, cx, y3, cw, 16);
+            Paper.iconTextButton(g, font, Paper.tool("arrow"), T.tr("button.teleport"), cx, y3, cw, 16, h3, true);
             hit(cx, y3, cw, 16, () -> teleportTo(selected));
         }
     }

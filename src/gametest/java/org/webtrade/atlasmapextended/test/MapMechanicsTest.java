@@ -364,5 +364,20 @@ public class MapMechanicsTest implements FabricClientGameTest {
         net.minecraft.network.chat.Component transformed = WaypointShare.modifyChatMessage(original);
         check(transformed != null, "chat message transformed");
         check(!transformed.equals(original), "chat message modified");
+
+        Region r = new Region();
+        r.name = "Northern Outpost";
+        r.dim = "minecraft:overworld";
+        r.color = 0x00FF88;
+        r.pts = new double[]{100, 100, 200, 100, 200, 200, 100, 200};
+        Marker rProxy = new Marker();
+        rProxy.name = r.name;
+        rProxy.dim = r.dim;
+        rProxy.color = r.color;
+        rProxy.x = 150;
+        rProxy.y = 64;
+        rProxy.z = 150;
+        String regionShare = WaypointShare.toShareString(rProxy, "Player1", "*");
+        check(regionShare.contains("name:Northern Outpost") && regionShare.contains("x:150") && regionShare.contains("z:150"), "region share format");
     }
 }
