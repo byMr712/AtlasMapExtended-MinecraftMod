@@ -88,6 +88,9 @@ public class ItemFrameRendererMixin {
             int light,
             CallbackInfo ci
     ) {
+        if (!ModConfig.get().customMapStyle) {
+            return;
+        }
         if (state.mapId == null) {
             return;
         }
