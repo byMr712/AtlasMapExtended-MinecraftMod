@@ -33,7 +33,8 @@ public class ModConfig {
     public int serverMapSort = 0;
     public int realmMapSort = 0;
     public String theme = "papyrus";
-    public boolean framedMaps3D = true;
+    public boolean customMapStyle = false;
+    public boolean framedMaps3D = false;
     public int framedMapsStartY = 60;
     /** Shows a "Teleport" button on markers (needs command permission). */
     public boolean teleport = false;
