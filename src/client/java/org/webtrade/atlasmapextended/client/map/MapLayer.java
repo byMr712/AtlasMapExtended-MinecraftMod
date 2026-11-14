@@ -273,6 +273,16 @@ public class MapLayer {
         removed.forEach(MapTile::release);
     }
 
+    public void discard() {
+        closed = true;
+        loading.clear();
+        for (MapTile t : tiles.values()) {
+            t.diskDirty = false;
+            t.release();
+        }
+        tiles.clear();
+    }
+
     public void close() {
         closed = true;
         loading.clear();
