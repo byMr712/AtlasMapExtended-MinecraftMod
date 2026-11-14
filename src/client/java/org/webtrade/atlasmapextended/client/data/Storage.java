@@ -154,29 +154,73 @@ public final class Storage {
         return sanitize(dim.replace(':', '_'));
     }
 
+    public static void safeMove(Path src, Path dst) throws IOException {
+        try {
+            Files.move(src, dst, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            return;
+        } catch (IOException e) {
+            // Atomic move may fail on Windows (sharing violation or unsupported with replace).
+        }
+        for (int i = 0; i < 5; i++) {
+            try {
+                Files.move(src, dst, StandardCopyOption.REPLACE_EXISTING);
+                return;
+            } catch (IOException e) {
+                if (i == 4) {
+                    throw e;
+                }
+                try {
+                    Thread.sleep(25);
+                } catch (InterruptedException ignored) {
+                    Thread.currentThread().interrupt();
+                    throw e;
+                }
+            }
+        }
+    }
+
     public static <T> T readJson(Path file, Type type, T fallback) {
         if (!Files.isRegularFile(file)) {
             return fallback;
         }
-        try (Reader r = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
-            T v = GSON.fromJson(r, type);
-            return v == null ? fallback : v;
-        } catch (Exception e) {
-            LOG.warn("Failed to read {}", file, e);
-            return fallback;
+        for (int i = 0; i < 3; i++) {
+            try (Reader r = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+                T v = GSON.fromJson(r, type);
+                return v == null ? fallback : v;
+            } catch (Exception e) {
+                if (i == 2) {
+                    LOG.warn("Failed to read {}", file, e);
+                    return fallback;
+                }
+                try {
+                    Thread.sleep(20);
+                } catch (InterruptedException ignored) {
+                    Thread.currentThread().interrupt();
+                    return fallback;
+                }
+            }
         }
+        return fallback;
     }
 
     public static void writeJson(Path file, Object value) {
+        Path tmp = null;
         try {
             Files.createDirectories(file.getParent());
-            Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
+            tmp = file.resolveSibling(file.getFileName() + "." + System.nanoTime() + ".tmp");
             try (Writer w = Files.newBufferedWriter(tmp, StandardCharsets.UTF_8)) {
                 GSON.toJson(value, w);
             }
-            Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            safeMove(tmp, file);
         } catch (IOException e) {
             LOG.warn("Failed to write {}", file, e);
+        } finally {
+            if (tmp != null) {
+                try {
+                    Files.deleteIfExists(tmp);
+                } catch (Exception ignored) {
+                }
+            }
         }
     }
 
@@ -184,13 +228,21 @@ public final class Storage {
     public static void writeJsonAsync(Path file, Object value) {
         String json = GSON.toJson(value);
         IO.execute(() -> {
+            Path tmp = null;
             try {
                 Files.createDirectories(file.getParent());
-                Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
+                tmp = file.resolveSibling(file.getFileName() + "." + System.nanoTime() + ".tmp");
                 Files.writeString(tmp, json, StandardCharsets.UTF_8);
-                Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+                safeMove(tmp, file);
             } catch (IOException e) {
                 LOG.warn("Failed to write {}", file, e);
+            } finally {
+                if (tmp != null) {
+                    try {
+                        Files.deleteIfExists(tmp);
+                    } catch (Exception ignored) {
+                    }
+                }
             }
         });
     }

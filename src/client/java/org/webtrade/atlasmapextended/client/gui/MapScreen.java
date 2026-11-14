@@ -4229,11 +4229,18 @@ public class MapScreen extends Screen {
         }
         WorldMeta meta = new WorldMeta();
         meta.id = newId;
-        meta.type = WorldMeta.SERVER;
-        meta.address = defaultKey.startsWith("server_") ? defaultKey.substring(7) : defaultKey;
-        meta.name = (mc.getCurrentServer() != null && mc.getCurrentServer().name != null && !mc.getCurrentServer().name.isBlank())
-                ? mc.getCurrentServer().name + " #" + idx
-                : meta.address + " #" + idx;
+        if (mc.getSingleplayerServer() != null) {
+            meta.type = WorldMeta.LOCAL;
+            String levelName = mc.getSingleplayerServer().getWorldData().getLevelName();
+            meta.name = (levelName != null && !levelName.isBlank()) ? levelName + " #" + idx : "World #" + idx;
+            meta.address = defaultKey.startsWith("local_") ? defaultKey.substring(6) : defaultKey;
+        } else {
+            meta.type = WorldMeta.SERVER;
+            meta.address = defaultKey.startsWith("server_") ? defaultKey.substring(7) : defaultKey;
+            meta.name = (mc.getCurrentServer() != null && mc.getCurrentServer().name != null && !mc.getCurrentServer().name.isBlank())
+                    ? mc.getCurrentServer().name + " #" + idx
+                    : meta.address + " #" + idx;
+        }
         meta.lastPlayed = System.currentTimeMillis();
         Storage.writeJson(Storage.worldDir(newId).resolve("meta.json"), meta);
 
