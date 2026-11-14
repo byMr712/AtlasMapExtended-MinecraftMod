@@ -10,6 +10,7 @@ import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.phys.Vec3;
+import com.mojang.blaze3d.vertex.PoseStack;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
@@ -161,7 +162,18 @@ public final class WorldMarkerHud {
             icon.uses++;
             icon.lastUsed = now;
             int tint = m.color == 0 ? alpha << 24 | 0xFFFFFF : Paper.a(m.color, alpha);
-            Paper.icon(g, icon.texture, sx - iconSize / 2, sy - iconSize / 2, iconSize, tint);
+            boolean mirrorH = m.icon != null && m.icon.startsWith("arrow");
+            if (mirrorH) {
+                PoseStack pose = g.pose();
+                pose.pushPose();
+                pose.translate(sx, sy, 0);
+                pose.scale(-1.0f, 1.0f, 1.0f);
+                pose.translate(-sx, -sy, 0);
+                Paper.icon(g, icon.texture, sx - iconSize / 2, sy - iconSize / 2, iconSize, tint);
+                pose.popPose();
+            } else {
+                Paper.icon(g, icon.texture, sx - iconSize / 2, sy - iconSize / 2, iconSize, tint);
+            }
             drawn++;
 
             int hx = sx - crossX;

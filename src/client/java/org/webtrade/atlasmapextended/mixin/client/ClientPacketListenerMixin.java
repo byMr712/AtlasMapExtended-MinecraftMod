@@ -14,11 +14,27 @@ import org.webtrade.atlasmapextended.client.framed3d.FramedMapConnections;
 import org.webtrade.atlasmapextended.client.framed3d.FramedOverlayStorage;
 import org.webtrade.atlasmapextended.client.map.HeldMapTextures;
 import org.webtrade.atlasmapextended.client.map.MapLocationResolver;
+import net.minecraft.client.gui.screens.Screen;
 import org.webtrade.atlasmapextended.client.map.MapManager;
+import org.webtrade.atlasmapextended.client.map.WaypointShare;
 
 /** Replaces Fabric API's join and disconnect events. */
 @Mixin(ClientPacketListener.class)
 public class ClientPacketListenerMixin {
+
+    @Inject(method = "sendCommand", at = @At("HEAD"), cancellable = true)
+    private void atlasmapextended$onSendCommand(String command, CallbackInfo ci) {
+        if (WaypointShare.handleCommand(command)) {
+            ci.cancel();
+        }
+    }
+
+    @Inject(method = "sendUnattendedCommand", at = @At("HEAD"), cancellable = true, require = 0)
+    private void atlasmapextended$onSendUnattendedCommand(String command, Screen screen, CallbackInfo ci) {
+        if (WaypointShare.handleCommand(command)) {
+            ci.cancel();
+        }
+    }
 
     @Inject(method = "handleLogin", at = @At("TAIL"))
     private void atlasmapextended$handleLogin(ClientboundLoginPacket packet, CallbackInfo ci) {
