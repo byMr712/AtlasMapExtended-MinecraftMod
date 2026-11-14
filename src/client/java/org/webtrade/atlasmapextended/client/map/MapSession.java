@@ -44,8 +44,10 @@ public class MapSession {
             if (m.shotDrawings == null) {
                 m.shotDrawings = new java.util.HashMap<>();
             }
-            if (m.icon == null) {
+            if (m.icon == null || m.icon.isBlank()) {
                 m.icon = "pin";
+            } else if ("arrow".equals(m.icon)) {
+                m.icon = "arrow_n";
             }
             // coloured copies of icons were merged into one tintable icon
             T.Alias alias = T.ALIASES.get(m.icon);
