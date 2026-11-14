@@ -177,17 +177,14 @@ public class WorldsScreen extends Screen {
                 Paper.outline(g, cx, cy, cw, cardH, hover ? Paper.GOLD : Paper.INK_FAINT);
                 Paper.inset(g, cx + 4, cy + 4, 30, 30);
                 Paper.icon(g, Paper.tool(isServers ? "globe" : "map"), cx + 7, cy + 7, 24);
-                String name = font.plainSubstrByWidth(m.name == null || m.name.isEmpty() ? m.id : m.name, cw - 80);
+                String name = font.plainSubstrByWidth(m.name == null || m.name.isEmpty() ? m.id : m.name, cw - 64);
                 g.drawString(font, name, cx + 40, cy + 5, Paper.INK, false);
-                String addr = font.plainSubstrByWidth(m.address == null ? "" : m.address, cw - 80);
+                String addr = font.plainSubstrByWidth(m.address == null ? "" : m.address, cw - 64);
                 g.drawString(font, addr, cx + 40, cy + 15, Paper.INK_SOFT, false);
                 String info = T.s("atlas.info", markerCounts.getOrDefault(m.id, 0), df.format(new Date(m.lastPlayed)));
-                g.drawString(font, font.plainSubstrByWidth(info, cw - 80), cx + 40, cy + 26, Paper.DISABLED, false);
+                g.drawString(font, font.plainSubstrByWidth(info, cw - 64), cx + 40, cy + 26, Paper.DISABLED, false);
                 int tx = cx + cw - 20;
-                int ex = tx - 19;
                 int ty = cy + (cardH - 16) / 2;
-                boolean eh = hover && Paper.inside(mx, my, ex, ty, 16, 16);
-                Paper.iconButton(g, Paper.tool("eye"), ex, ty, 16, eh, false);
                 boolean th = hover && Paper.inside(mx, my, tx, ty, 16, 16);
                 Paper.iconButton(g, Paper.tool("trash"), tx, ty, 16, th, false);
                 int clipY = Math.max(cy, top);
@@ -195,7 +192,6 @@ public class WorldsScreen extends Screen {
                 if (clipH > 0) {
                     hits.add(new Hit(cx, clipY, cw, clipH, () -> openWorld(m)));
                     if (ty >= top && ty + 16 <= bottom) {
-                        hits.add(new Hit(ex, ty, 16, 16, () -> previewWorld(m)));
                         hits.add(new Hit(tx, ty, 16, 16, () -> toDelete = m));
                     }
                 }
@@ -204,14 +200,6 @@ public class WorldsScreen extends Screen {
         }
         g.disableScissor();
         return new int[]{x, top, w, bottom - top};
-    }
-
-    private void previewWorld(WorldMeta m) {
-        MapSession s = MapManager.openForViewing(m);
-        if (s != null) {
-            Paper.pageTurn();
-            minecraft.setScreen(new MapScreen(this, s, true, m));
-        }
     }
 
     private void openWorld(WorldMeta m) {
