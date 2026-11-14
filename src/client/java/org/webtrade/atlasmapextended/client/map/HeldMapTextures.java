@@ -42,6 +42,7 @@ public final class HeldMapTextures {
     private static final Map<String, NativeImage> FULL = new HashMap<>();
     /** The same full image pre-rotated once per orientation. */
     private static final Map<String, NativeImage> FULL_ROTATED = new HashMap<>();
+    private static final Map<Integer, Boolean> MAP_ART_CACHE = new HashMap<>();
 
     private HeldMapTextures() {
     }
@@ -92,7 +93,7 @@ public final class HeldMapTextures {
     private static Identifier get(MapId mapId, MapItemSavedData data, boolean withOverlay,
                                   int textureMask, boolean border,
                                   int tileDiv, int tileCol, int tileRow, int tileRotation) {
-        if (!ModConfig.get().customMapStyle || data.colors == null) {
+        if (!ModConfig.get().customMapStyle || data.colors == null || isMapArt(mapId, data)) {
             return null;
         }
         int id = mapId.id();
@@ -431,5 +432,59 @@ public final class HeldMapTextures {
             }
         }
         ICONS.clear();
+        MAP_ART_CACHE.clear();
+    }
+
+    public static boolean isMapArt(MapId mapId, MapItemSavedData data) {
+        if (!ModConfig.get().customMapStyle && !ModConfig.get().framedMaps3D) {
+            return false;
+        }
+        if (data == null || data.colors == null || !data.locked) {
+            return false;
+        }
+        if (mapId != null) {
+            Boolean cached = MAP_ART_CACHE.get(mapId.id());
+            if (cached != null) {
+                return cached;
+            }
+        }
+        boolean art = computeIsMapArt(data.colors);
+        if (mapId != null) {
+            MAP_ART_CACHE.put(mapId.id(), art);
+        }
+        return art;
+    }
+
+    private static boolean computeIsMapArt(byte[] colors) {
+        if (colors == null || colors.length == 0) {
+            return false;
+        }
+        int artPixels = 0;
+        long uniqueMaskLow = 0L;
+        int uniqueCount = 0;
+        for (int i = 0; i < colors.length; i++) {
+            int cid = (colors[i] & 0xFF) >> 2;
+            if (cid == 0) {
+                continue;
+            }
+            if (cid < 64) {
+                long bit = 1L << cid;
+                if ((uniqueMaskLow & bit) == 0L) {
+                    uniqueMaskLow |= bit;
+                    uniqueCount++;
+                    if (uniqueCount >= 14) {
+                        return true;
+                    }
+                }
+            }
+            if (cid == 29 || cid == 51 || cid == 16 || cid == 23 || cid == 24
+                    || cid == 25 || cid == 19 || cid == 31 || cid == 32) {
+                artPixels++;
+                if (artPixels >= 100) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 }
