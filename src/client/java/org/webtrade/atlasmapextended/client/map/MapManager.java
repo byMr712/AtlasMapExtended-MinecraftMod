@@ -83,7 +83,31 @@ public final class MapManager {
         closeLive();
     }
 
-    private static void closeLive() {
+    public static void discardLive() {
+        if (live != null) {
+            live.close();
+            live = null;
+        }
+        liveDim = null;
+        insideRegions.clear();
+        queue.clear();
+    }
+
+    public static void reloadLive() {
+        Minecraft mc = Minecraft.getInstance();
+        discardLive();
+        WorldMeta meta = resolveMeta(mc);
+        live = MapSession.open(meta);
+        live.live = true;
+        liveDim = null;
+        remoteView.clear();
+        remoteZoom.clear();
+        insideRegions.clear();
+        queue.clear();
+        live.saveMeta();
+    }
+
+    public static void closeLive() {
         if (live != null) {
             if (liveDim != null) {
                 live.meta.setPos(liveDim, curX, curZ);
@@ -328,7 +352,7 @@ public final class MapManager {
         live.saveMeta();
     }
 
-    private static WorldMeta resolveMeta(Minecraft mc) {
+    public static WorldMeta resolveMeta(Minecraft mc) {
         WorldMeta meta = new WorldMeta();
         IntegratedServer sp = mc.getSingleplayerServer();
         ServerData sd = mc.getCurrentServer();
