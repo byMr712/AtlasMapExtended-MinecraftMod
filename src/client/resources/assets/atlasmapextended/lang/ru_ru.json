@@ -323,5 +323,9 @@
   "atlasmapextended.marker.share.view_tip": "Нажмите, чтобы показать на карте",
   "atlasmapextended.marker.share.added": "Метка «%s» добавлена на карту",
   "atlasmapextended.marker.share.updated": "Метка «%s» обновлена",
-  "atlasmapextended.marker.share.by": "Отправил: %s"
+  "atlasmapextended.marker.share.by": "Отправил: %s",
+  "atlasmapextended.region.share.title": "Поделиться районом",
+  "atlasmapextended.region.share.sent": "Район отправлен в чат",
+  "atlasmapextended.region.share.sent_to": "Район отправлен игроку %s",
+  "atlasmapextended.region.share.copied": "Район скопирован в буфер"
 }
