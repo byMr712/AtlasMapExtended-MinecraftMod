@@ -127,7 +127,12 @@ public final class Paper {
     }
 
     public static ResourceLocation marker(String icon) {
-        return id("textures/gui/markers/" + icon + ".png");
+        String name = icon == null || icon.isBlank() ? "pin" : ("arrow".equals(icon) ? "arrow_n" : icon);
+        T.Alias alias = T.ALIASES.get(name);
+        if (alias != null) {
+            name = alias.icon();
+        }
+        return id("textures/gui/markers/" + name + ".png");
     }
 
     public static ResourceLocation tool(String icon) {
@@ -204,10 +209,19 @@ public final class Paper {
 
     /** A marker icon; a non-zero colour repaints it using its grey copy. Alpha (0-255) fades it. */
     public static void markerIcon(GuiGraphics g, String icon, int color, int x, int y, int size, int alpha) {
-        if (color == 0) {
-            icon(g, marker(icon), x, y, size, alpha << 24 | 0xFFFFFF);
+        String name = icon == null || icon.isBlank() ? "pin" : ("arrow".equals(icon) ? "arrow_n" : icon);
+        int c = color;
+        T.Alias alias = T.ALIASES.get(name);
+        if (alias != null) {
+            name = alias.icon();
+            if (c == 0) {
+                c = alias.color();
+            }
+        }
+        if (c == 0) {
+            icon(g, marker(name), x, y, size, alpha << 24 | 0xFFFFFF);
         } else {
-            icon(g, id("textures/gui/markers_tint/" + icon + ".png"), x, y, size, a(color, alpha));
+            icon(g, id("textures/gui/markers_tint/" + name + ".png"), x, y, size, a(c, alpha));
         }
     }
 
@@ -219,6 +233,11 @@ public final class Paper {
     public static void icon(GuiGraphics g, ResourceLocation tex, int x, int y, int size, int color) {
         ensure(tex);
         g.blit(RenderType::guiTextured, tex, x, y, 0f, 0f, size, size, 16, 16, 16, 16, color);
+    }
+
+    public static void iconMirroredH(GuiGraphics g, ResourceLocation tex, int x, int y, int size, int color) {
+        ensure(tex);
+        g.blit(RenderType::guiTextured, tex, x, y, 16f, 0f, size, size, -16, 16, 16, 16, color);
     }
 
     /** Square icon button. */
