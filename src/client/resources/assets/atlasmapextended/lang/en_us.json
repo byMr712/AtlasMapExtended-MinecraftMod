@@ -351,6 +351,7 @@
   "atlasmapextended.map.preview_title": "Preview: %s",
   "atlasmapextended.map.preview.bind": "Bind map",
   "atlasmapextended.map.preview.back": "Back to map menu",
+  "atlasmapextended.map.preview.back_atlas": "Back to world atlas",
   "atlasmapextended.map.section.locals": "Singleplayer Worlds",
   "atlasmapextended.map.section.servers": "Multiplayer Servers",
   "atlasmapextended.map.section.realms": "Realms",
