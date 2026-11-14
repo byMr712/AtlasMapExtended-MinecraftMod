@@ -13,6 +13,7 @@
     "GuiMixin",
     "KeyboardHandlerMixin",
     "LanguageManagerMixin",
+    "LevelStorageAccessMixin",
     "MinecraftMixin",
     "MultiLineEditBoxMixin",
     "OptionsMixin",
