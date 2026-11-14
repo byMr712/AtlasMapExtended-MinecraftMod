@@ -4,7 +4,8 @@
   "package": "org.webtrade.atlasmapextended.mixin.client",
   "compatibilityLevel": "JAVA_21",
   "client": [
-    "AbstractScrollWidgetMixin",
+"AbstractScrollWidgetMixin",
+    "ChatComponentMixin",
     "ClientChunkCacheMixin",
     "EditBoxMixin",
     "ClientPacketListenerMixin",
