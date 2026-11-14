@@ -185,6 +185,11 @@ public class MapSession {
         layers.values().forEach(MapLayer::unloadUnused);
     }
 
+    public void discard() {
+        layers.values().forEach(MapLayer::discard);
+        layers.clear();
+    }
+
     public void close() {
         layers.values().forEach(MapLayer::close);
         layers.clear();
