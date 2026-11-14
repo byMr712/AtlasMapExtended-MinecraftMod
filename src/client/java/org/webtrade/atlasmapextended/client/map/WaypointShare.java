@@ -507,7 +507,14 @@ public final class WaypointShare {
             m.dim = dim;
             m.color = wp.color;
             if (wp.icon != null && !wp.icon.isBlank()) {
-                m.icon = wp.icon;
+                m.icon = "arrow".equals(wp.icon) ? "arrow_n" : wp.icon;
+                T.Alias alias = T.ALIASES.get(m.icon);
+                if (alias != null) {
+                    m.icon = alias.icon();
+                    if (m.color == 0) {
+                        m.color = alias.color();
+                    }
+                }
             }
             session.markers.add(m);
             session.saveMarkers();
@@ -538,7 +545,14 @@ public final class WaypointShare {
             target.dim = dim;
             target.color = wp.color;
             if (wp.icon != null && !wp.icon.isBlank()) {
-                target.icon = wp.icon;
+                target.icon = "arrow".equals(wp.icon) ? "arrow_n" : wp.icon;
+                T.Alias alias = T.ALIASES.get(target.icon);
+                if (alias != null) {
+                    target.icon = alias.icon();
+                    if (target.color == 0) {
+                        target.color = alias.color();
+                    }
+                }
             }
         }
 
