@@ -437,7 +437,11 @@ public final class MapManager {
             }
 
             meta.id = targetId;
-            meta.type = WorldMeta.SERVER;
+            if (sd != null && sd.isRealm()) {
+                meta.type = WorldMeta.REALM;
+            } else {
+                meta.type = WorldMeta.SERVER;
+            }
             if (sd != null) {
                 meta.name = sd.name != null && !sd.name.isBlank() ? sd.name : (sd.ip != null ? normalizeServerAddress(sd.ip) : "Server");
                 meta.address = sd.ip != null ? normalizeServerAddress(sd.ip) : "server";
