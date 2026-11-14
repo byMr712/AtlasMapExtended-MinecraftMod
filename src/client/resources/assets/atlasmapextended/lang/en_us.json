@@ -327,5 +327,10 @@
   "atlasmapextended.region.share.title": "Share Region",
   "atlasmapextended.region.share.sent": "Region shared to chat",
   "atlasmapextended.region.share.sent_to": "Region sent to %s",
-  "atlasmapextended.region.share.copied": "Region copied to clipboard"
+  "atlasmapextended.region.share.copied": "Region copied to clipboard",
+  "atlasmapextended.region.share.add_tip": "Click to add region to Atlas",
+  "atlasmapextended.region.share.view_tip": "Click to show region on map",
+  "atlasmapextended.region.share.added": "Region “%s” added to map",
+  "atlasmapextended.region.share.updated": "Region “%s” updated",
+  "atlasmapextended.region.share.showing": "Showing region “%s”"
 }
