@@ -19,6 +19,7 @@ import org.webtrade.atlasmapextended.client.map.MapLayer;
 import org.webtrade.atlasmapextended.client.map.MapManager;
 import org.webtrade.atlasmapextended.client.map.MapSession;
 import org.webtrade.atlasmapextended.client.map.MapTile;
+import org.webtrade.atlasmapextended.client.map.WaypointShare;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -42,6 +43,7 @@ public class MapMechanicsTest implements FabricClientGameTest {
             translations();
             viewTransforms();
             configPersistence();
+            waypointShare();
         });
 
         try (TestSingleplayerContext sp = ctx.worldBuilder()
@@ -328,5 +330,62 @@ public class MapMechanicsTest implements FabricClientGameTest {
             s.saveMarkers();
             ImageCache.clear();
         }
+    }
+
+    private void waypointShare() {
+        Marker m = new Marker();
+        m.name = "Base Camp";
+        m.x = 120;
+        m.y = 65;
+        m.z = -300;
+        m.dim = "minecraft:overworld";
+        m.color = 0xFF5500;
+        m.icon = "pin";
+
+        String shareStr = WaypointShare.toShareString(m, "Player1", "*");
+        check(shareStr.startsWith("[name:Base Camp, x:120, y:65, z:-300"), "waypoint serialize base");
+        check(shareStr.contains("sharedBy:Player1"), "waypoint serialize sender");
+
+        WaypointShare.ParsedWaypoint wp = WaypointShare.parse(shareStr);
+        check(wp != null, "waypoint parse non-null");
+        check("Base Camp".equals(wp.name), "waypoint parse name");
+        check(wp.x == 120 && wp.y == 65 && wp.z == -300, "waypoint parse coords");
+        check("minecraft:overworld".equals(wp.dim), "waypoint parse dim");
+        check(wp.color == 0xFF5500, "waypoint parse color");
+        check("Player1".equals(wp.sharedBy), "waypoint parse sender");
+
+        String xaeroStr = "xaero-waypoint:Outpost:O:-45:70:890:3:false:0:Internal-overworld-waypoints";
+        WaypointShare.ParsedWaypoint xaeroWp = WaypointShare.parse(xaeroStr);
+        check(xaeroWp != null, "xaero waypoint parse non-null");
+        check("Outpost".equals(xaeroWp.name), "xaero waypoint name");
+        check(xaeroWp.x == -45 && xaeroWp.y == 70 && xaeroWp.z == 890, "xaero waypoint coords");
+
+        net.minecraft.network.chat.Component original = net.minecraft.network.chat.Component.literal("Found this: " + shareStr + " see you there!");
+        net.minecraft.network.chat.Component transformed = WaypointShare.modifyChatMessage(original);
+        check(transformed != null, "chat message transformed");
+        check(!transformed.equals(original), "chat message modified");
+
+        Region r = new Region();
+        r.name = "Northern Outpost";
+        r.dim = "minecraft:overworld";
+        r.color = 0x00FF88;
+        r.description = "Main fortress";
+        r.filled = true;
+        r.pts = new double[]{100, 100, 200, 100, 200, 200, 100, 200};
+
+        String regionShare = WaypointShare.toRegionShareString(r, "Player1", "*");
+        check(regionShare.contains("name:Northern Outpost") && regionShare.contains("type:region"), "region serialize type");
+        check(regionShare.contains("pts:100_100;200_100;200_200;100_200"), "region serialize points");
+
+        WaypointShare.ParsedWaypoint rWp = WaypointShare.parse(regionShare);
+        check(rWp != null && rWp.isRegion, "region parsed as region");
+        check("Northern Outpost".equals(rWp.name), "region parse name");
+        check(rWp.pts != null && rWp.pts.length == 8, "region parse points length");
+        check(rWp.pts[0] == 100 && rWp.pts[1] == 100, "region parse first point");
+        check(rWp.color == 0x00FF88, "region parse color");
+        check("Main fortress".equals(rWp.description), "region parse description");
+
+        net.minecraft.network.chat.Component regChat = WaypointShare.modifyChatMessage(net.minecraft.network.chat.Component.literal("Check " + regionShare));
+        check(regChat != null && regChat.getString().contains("⬡ Northern Outpost"), "region chat component format");
     }
 }
