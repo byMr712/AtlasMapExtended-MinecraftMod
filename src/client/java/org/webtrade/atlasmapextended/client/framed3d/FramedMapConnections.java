@@ -26,6 +26,7 @@ import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.webtrade.atlasmapextended.client.gui.Paper;
+import org.webtrade.atlasmapextended.client.map.HeldMapTextures;
 
 import java.util.ArrayDeque;
 import java.util.HashMap;
@@ -285,7 +286,7 @@ public final class FramedMapConnections {
             return;
         }
         MapItemSavedData data = level.getMapData(state.mapId);
-        if (data == null) {
+        if (data == null || HeldMapTextures.isMapArt(state.mapId, data)) {
             return;
         }
         BlockPos pos = BlockPos.containing(state.x, state.y, state.z);
