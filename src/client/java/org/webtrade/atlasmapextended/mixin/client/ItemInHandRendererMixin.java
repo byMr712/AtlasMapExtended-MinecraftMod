@@ -31,6 +31,9 @@ public class ItemInHandRendererMixin {
     private void atlasmapextended$heldMapTexture(
             PoseStack pose, MultiBufferSource buffer, int light, ItemStack stack, CallbackInfo ci
     ) {
+        if (!org.webtrade.atlasmapextended.client.data.ModConfig.get().customMapStyle) {
+            return;
+        }
         MapId mapId = stack.get(DataComponents.MAP_ID);
         if (mapId == null) {
             return;
