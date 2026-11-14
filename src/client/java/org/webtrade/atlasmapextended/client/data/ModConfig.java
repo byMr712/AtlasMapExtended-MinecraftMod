@@ -14,8 +14,10 @@ public class ModConfig {
     /** Bumped when the size list changes, so old indices can be remapped once. */
     public int minimapSizesVersion = 0;
     public int minimapZoomIndex = 0;
-    /** "3D framed maps": extruded terrain for maps in item frames. Enabled by default. */
-    public boolean framedMaps3D = true;
+    /** Changes the visual style of vanilla filled maps (papyrus look and overlays). Disabled by default. */
+    public boolean customMapStyle = false;
+    /** "3D framed maps": extruded terrain for maps in item frames. Disabled by default. */
+    public boolean framedMaps3D = false;
     /** Main world height for the framed relief; 20 blocks below it still render as the map base. */
     public int framedMapsStartY = 60;
     /** 0 = off, 1 = 1, 2 = 5, 3 = 10, 4 = unlimited. */

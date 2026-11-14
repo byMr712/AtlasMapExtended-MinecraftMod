@@ -26,6 +26,9 @@ public class FirstPersonHandsAndItemsMixin {
             MapRenderState state,
             CallbackInfoReturnable<Boolean> cir
     ) {
+        if (!org.webtrade.atlasmapextended.client.data.ModConfig.get().customMapStyle) {
+            return;
+        }
         if (!cir.getReturnValue()) {
             return;
         }
