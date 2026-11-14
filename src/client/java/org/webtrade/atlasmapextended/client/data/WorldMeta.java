@@ -4,6 +4,7 @@ package org.webtrade.atlasmapextended.client.data;
 public class WorldMeta {
     public static final String SERVER = "server";
     public static final String LOCAL = "local";
+    public static final String REALM = "realm";
 
     public String id = "";
     public String name = "";
@@ -30,7 +31,15 @@ public class WorldMeta {
         dimPos.put(dim, new double[]{x, z});
     }
 
+    public boolean isRealm() {
+        return REALM.equals(type) || (id != null && id.startsWith("server_realm_"));
+    }
+
     public boolean isServer() {
-        return SERVER.equals(type);
+        return (SERVER.equals(type) || (id != null && id.startsWith("server_"))) && !isRealm();
+    }
+
+    public boolean isLocal() {
+        return !isServer() && !isRealm();
     }
 }
