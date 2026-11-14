@@ -105,6 +105,9 @@ public class ItemFrameRendererMixin {
             CameraRenderState camera,
             CallbackInfo ci
     ) {
+        if (!ModConfig.get().customMapStyle) {
+            return;
+        }
         if (state.mapId == null) {
             return;
         }
