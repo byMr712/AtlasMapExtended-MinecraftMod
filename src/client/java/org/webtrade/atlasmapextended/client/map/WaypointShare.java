@@ -552,7 +552,7 @@ public final class WaypointShare {
     public static void notifyPlayer(String msg) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player != null) {
-            mc.player.sendSystemMessage(Component.literal("§6[Atlas] §r" + msg));
+            mc.player.sendSystemMessage(Component.literal("§6[AtlasMapExtended] §r" + msg));
         }
     }
 }
