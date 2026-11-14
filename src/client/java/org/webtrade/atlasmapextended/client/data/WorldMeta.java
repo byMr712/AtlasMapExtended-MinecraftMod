@@ -13,6 +13,8 @@ public class WorldMeta {
     public String lastDim = "minecraft:overworld";
     public double lastX;
     public double lastZ;
+    public long seed;
+    public String uid = "";
 
     /** Player position when this dimension was last left, keyed by dimension id. */
     public java.util.Map<String, double[]> dimPos = new java.util.LinkedHashMap<>();
