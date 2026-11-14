@@ -10,12 +10,14 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 /** A small parchment plaque above the hotbar shown when the player enters or leaves a region. */
 public final class RegionToast {
     private static final int TOTAL = 80;
+    private static final int FAST = 20;
     private static final int MAX_QUEUE = 4;
     /** Pending messages, so leaving one nested region and entering another are both shown. */
     private static final Deque<String[]> queue = new ArrayDeque<>();
     private static String title = "";
     private static String name = "";
     private static int ticks;
+    private static int displayTicks;
 
     private RegionToast() {
     }
@@ -26,25 +28,45 @@ public final class RegionToast {
         }
         queue.removeIf(item -> regionName.equals(item[1]));
         if (ticks > 0 && heading.equals(title) && !regionName.equals(name)) {
+            if (displayTicks >= FAST) {
+                queue.clear();
+                title = heading;
+                name = regionName;
+                ticks = TOTAL;
+                displayTicks = 0;
+                return;
+            }
             if (queue.size() < MAX_QUEUE) {
                 queue.addLast(new String[]{heading, regionName});
             }
+            ticks = Math.min(ticks, Math.max(1, FAST - displayTicks));
             return;
         }
         queue.clear();
         title = heading;
         name = regionName;
         ticks = TOTAL;
+        displayTicks = 0;
+    }
+
+    public static void clear() {
+        queue.clear();
+        title = "";
+        name = "";
+        ticks = 0;
+        displayTicks = 0;
     }
 
     public static void tick() {
         if (ticks > 0) {
             ticks--;
+            displayTicks++;
             if (ticks == 0 && !queue.isEmpty()) {
                 String[] next = queue.removeFirst();
                 title = next[0];
                 name = next[1];
-                ticks = TOTAL;
+                ticks = queue.isEmpty() ? TOTAL : FAST;
+                displayTicks = 0;
             }
         }
     }
