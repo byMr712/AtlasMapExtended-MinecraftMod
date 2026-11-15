@@ -21,6 +21,11 @@ import org.webtrade.atlasmapextended.client.map.MapManager;
 import org.webtrade.atlasmapextended.client.map.MapSession;
 import org.webtrade.atlasmapextended.client.map.MapTile;
 import org.webtrade.atlasmapextended.client.map.WaypointShare;
+import org.webtrade.atlasmapextended.client.map.HeldMapTextures;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.saveddata.maps.MapId;
+import net.minecraft.world.level.saveddata.maps.MapItemSavedData;
+import java.util.Arrays;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -45,6 +50,7 @@ public class MapMechanicsTest implements FabricClientGameTest {
             viewTransforms();
             configPersistence();
             waypointShare();
+            mapArtDetection();
         });
 
         try (TestSingleplayerContext sp = ctx.worldBuilder()
@@ -390,5 +396,117 @@ public class MapMechanicsTest implements FabricClientGameTest {
 
         net.minecraft.network.chat.Component regChat = WaypointShare.modifyChatMessage(net.minecraft.network.chat.Component.literal("Check " + regionShare));
         check(regChat != null && regChat.getString().contains("⬡ Northern Outpost"), "region chat component format");
+    }
+
+    private void mapArtDetection() {
+        ModConfig cfg = ModConfig.get();
+        boolean origCustomStyle = cfg.customMapStyle;
+        boolean origFramed3D = cfg.framedMaps3D;
+
+        try {
+            HeldMapTextures.clear();
+            MapId mapId = new MapId(999);
+
+            // 1. Config disabled -> always false, no scanning overhead
+            cfg.customMapStyle = false;
+            cfg.framedMaps3D = false;
+            MapItemSavedData lockedArt = MapItemSavedData.createFresh(0, 0, (byte) 0, false, false, Level.OVERWORLD).locked();
+            lockedArt.colors = new byte[16384];
+            Arrays.fill(lockedArt.colors, (byte) (29 << 2)); // All black sky
+            check(!HeldMapTextures.isMapArt(mapId, lockedArt), "isMapArt false when both customMapStyle and framedMaps3D disabled");
+
+            // 2. Enabled customMapStyle
+            cfg.customMapStyle = true;
+
+            // Null checks
+            check(!HeldMapTextures.isMapArt(null, null), "isMapArt false for null data");
+            check(!HeldMapTextures.isMapArt(mapId, null), "isMapArt false for null data with id");
+
+            MapItemSavedData emptyColors = MapItemSavedData.createFresh(0, 0, (byte) 0, false, false, Level.OVERWORLD).locked();
+            emptyColors.colors = null;
+            check(!HeldMapTextures.isMapArt(mapId, emptyColors), "isMapArt false for null colors");
+
+            // 3. Unlocked map with art colors -> must NOT be treated as art (prevents false positives during exploration)
+            MapItemSavedData unlockedMap = MapItemSavedData.createFresh(0, 0, (byte) 0, false, false, Level.OVERWORLD);
+            unlockedMap.colors = new byte[16384];
+            Arrays.fill(unlockedMap.colors, (byte) (29 << 2)); // Black
+            check(!HeldMapTextures.isMapArt(new MapId(1001), unlockedMap), "unlocked map is never detected as art");
+
+            // 4. Locked ordinary landscape map (grass, water, dirt, stone) -> must NOT be treated as art
+            HeldMapTextures.clear();
+            MapId normalId = new MapId(1002);
+            MapItemSavedData normalLandscape = MapItemSavedData.createFresh(0, 0, (byte) 0, false, false, Level.OVERWORLD).locked();
+            normalLandscape.colors = new byte[16384];
+            for (int i = 0; i < normalLandscape.colors.length; i++) {
+                // Biome palette: 1=GRASS, 10=DIRT, 11=STONE, 12=WATER
+                int colorId = (i % 4 == 0) ? 1 : (i % 4 == 1) ? 10 : (i % 4 == 2) ? 11 : 12;
+                normalLandscape.colors[i] = (byte) (colorId << 2);
+            }
+            check(!HeldMapTextures.isMapArt(normalId, normalLandscape), "locked normal landscape is not art");
+
+            // 5. Locked map with black background (MapColor.COLOR_BLACK = 29, 100+ pixels, like Photo 2 mob farm)
+            HeldMapTextures.clear();
+            MapId artId = new MapId(1003);
+            MapItemSavedData mobFarmArt = MapItemSavedData.createFresh(0, 0, (byte) 0, false, false, Level.OVERWORLD).locked();
+            mobFarmArt.colors = new byte[16384];
+            for (int i = 0; i < 200; i++) {
+                mobFarmArt.colors[i] = (byte) (29 << 2);
+            }
+            for (int i = 200; i < mobFarmArt.colors.length; i++) {
+                mobFarmArt.colors[i] = (byte) (11 << 2); // stone
+            }
+            check(HeldMapTextures.isMapArt(artId, mobFarmArt), "locked map with black sky detected as art");
+
+            // Verify cache hit
+            check(HeldMapTextures.isMapArt(artId, mobFarmArt), "cached isMapArt returns true");
+
+            // Verify render texture bypass when art is detected
+            check(HeldMapTextures.get(artId, mobFarmArt) == null, "HeldMapTextures.get returns null for art");
+            check(HeldMapTextures.getFramed(artId, mobFarmArt) == null, "HeldMapTextures.getFramed returns null for art");
+
+            // 6. Locked map with unnatural dyed palette (cyan = 23, magenta = 16, purple = 24)
+            HeldMapTextures.clear();
+            MapId dyedId = new MapId(1004);
+            MapItemSavedData dyedArt = MapItemSavedData.createFresh(0, 0, (byte) 0, false, false, Level.OVERWORLD).locked();
+            dyedArt.colors = new byte[16384];
+            for (int i = 0; i < 150; i++) {
+                dyedArt.colors[i] = (byte) (23 << 2); // COLOR_CYAN
+            }
+            check(HeldMapTextures.isMapArt(dyedId, dyedArt), "locked map with cyan pixels detected as art");
+
+            // 7. Locked map with high color diversity (>= 14 unique base colors)
+            HeldMapTextures.clear();
+            MapId diverseId = new MapId(1005);
+            MapItemSavedData diverseArt = MapItemSavedData.createFresh(0, 0, (byte) 0, false, false, Level.OVERWORLD).locked();
+            diverseArt.colors = new byte[16384];
+            for (int i = 0; i < diverseArt.colors.length; i++) {
+                // 15 distinct colors
+                int colorId = (i % 15) + 1;
+                diverseArt.colors[i] = (byte) (colorId << 2);
+            }
+            check(HeldMapTextures.isMapArt(diverseId, diverseArt), "locked map with 15 unique colors detected as art");
+
+            // 8. Normal terrain with small artificial element (< 100 pixels, e.g. 30 black pixels)
+            HeldMapTextures.clear();
+            MapId houseId = new MapId(1006);
+            MapItemSavedData terrainWithSmallHut = MapItemSavedData.createFresh(0, 0, (byte) 0, false, false, Level.OVERWORLD).locked();
+            terrainWithSmallHut.colors = new byte[16384];
+            for (int i = 0; i < 30; i++) {
+                terrainWithSmallHut.colors[i] = (byte) (29 << 2); // 30 black pixels
+            }
+            for (int i = 30; i < terrainWithSmallHut.colors.length; i++) {
+                terrainWithSmallHut.colors[i] = (byte) (1 << 2); // grass
+            }
+            check(!HeldMapTextures.isMapArt(houseId, terrainWithSmallHut), "terrain with small black feature (<100 px) is not art");
+
+            // 9. Cache clearing
+            HeldMapTextures.clear();
+            check(HeldMapTextures.isMapArt(artId, mobFarmArt), "recomputed after cache clear");
+
+        } finally {
+            cfg.customMapStyle = origCustomStyle;
+            cfg.framedMaps3D = origFramed3D;
+            HeldMapTextures.clear();
+        }
     }
 }
