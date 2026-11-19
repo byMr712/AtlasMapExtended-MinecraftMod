@@ -257,6 +257,52 @@ public class MapClientGameTest implements FabricClientGameTest {
                 }
                 ModConfig.get().teleport = true;
             });
+
+            // Experimental map features must ask before they are enabled.
+            ctx.runOnClient(mc -> {
+                SettingsScreen s = (SettingsScreen) mc.gui.screen();
+                ModConfig cfg = ModConfig.get();
+                cfg.customMapStyle = false;
+                cfg.framedMaps3D = false;
+                try {
+                    var toggle = SettingsScreen.class.getDeclaredMethod(
+                            "toggleExperimental", boolean.class, String.class, Runnable.class);
+                    toggle.setAccessible(true);
+                    var confirm = SettingsScreen.class.getDeclaredField("confirmAction");
+                    confirm.setAccessible(true);
+                    var close = SettingsScreen.class.getDeclaredMethod("closeConfirm");
+                    close.setAccessible(true);
+
+                    toggle.invoke(s, false, "settings.custom_map_style_warning",
+                            (Runnable) () -> cfg.customMapStyle = true);
+                    if (confirm.get(s) == null || cfg.customMapStyle) {
+                        throw new AssertionError("map style enabled without confirmation");
+                    }
+                    close.invoke(s);
+                    if (confirm.get(s) != null) {
+                        throw new AssertionError("style confirmation did not close");
+                    }
+
+                    toggle.invoke(s, false, "settings.framed_maps_3d_warning",
+                            (Runnable) () -> cfg.framedMaps3D = true);
+                    if (confirm.get(s) == null || cfg.framedMaps3D) {
+                        throw new AssertionError("3D maps enabled without confirmation");
+                    }
+                } catch (ReflectiveOperationException e) {
+                    throw new AssertionError(e);
+                }
+            });
+            ctx.takeScreenshot("13c_confirm_3d");
+            input.pressKey(InputConstants.KEY_ESCAPE);
+            ctx.waitTicks(2);
+            ctx.runOnClient(mc -> {
+                if (ModConfig.get().framedMaps3D) {
+                    throw new AssertionError("escape accepted the experimental toggle");
+                }
+                if (!(mc.gui.screen() instanceof SettingsScreen)) {
+                    throw new AssertionError("escape closed the settings instead of the confirmation");
+                }
+            });
             input.pressKey(InputConstants.KEY_ESCAPE);
             ctx.waitForScreen(MapScreen.class);
             for (Theme theme : Theme.ALL) {
