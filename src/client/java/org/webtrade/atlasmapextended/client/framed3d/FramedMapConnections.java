@@ -26,7 +26,6 @@ import org.joml.Matrix4fc;
 import org.joml.Vector3f;
 import org.webtrade.atlasmapextended.client.gui.Paper;
 import org.webtrade.atlasmapextended.client.map.HeldMapTextures;
-import org.webtrade.atlasmapextended.client.map.HeldMapTextures;
 
 import java.util.ArrayDeque;
 import java.util.HashMap;
