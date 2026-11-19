@@ -531,17 +531,39 @@ public class MapMechanicsTest implements FabricClientGameTest {
             }
             check(HeldMapTextures.isMapArt(dyedId, dyedArt), "locked map with cyan pixels detected as art");
 
-            // 7. Locked map with high color diversity (>= 14 unique base colors)
+            // 7. Locked map with high color diversity organised in flat blocks
             HeldMapTextures.clear();
             MapId diverseId = new MapId(1005);
             MapItemSavedData diverseArt = MapItemSavedData.createFresh(0, 0, (byte) 0, false, false, Level.OVERWORLD).locked();
             diverseArt.colors = new byte[16384];
             for (int i = 0; i < diverseArt.colors.length; i++) {
-                // 15 distinct colors
-                int colorId = (i % 15) + 1;
+                int x = i % 128;
+                int y = i / 128;
+                // 15 distinct colors in 8x8 blocks -> large flat areas
+                int colorId = ((x / 8) + (y / 8) * 16) % 15 + 1;
                 diverseArt.colors[i] = (byte) (colorId << 2);
             }
-            check(HeldMapTextures.isMapArt(diverseId, diverseArt), "locked map with 15 unique colors detected as art");
+            check(HeldMapTextures.isMapArt(diverseId, diverseArt), "locked map with 15 blocky colors detected as art");
+
+            // 7b. Same number of colors, but noisy per-pixel -> terrain, not art
+            HeldMapTextures.clear();
+            MapId noisyId = new MapId(1007);
+            MapItemSavedData noisyTerrain = MapItemSavedData.createFresh(0, 0, (byte) 0, false, false, Level.OVERWORLD).locked();
+            noisyTerrain.colors = new byte[16384];
+            for (int i = 0; i < noisyTerrain.colors.length; i++) {
+                noisyTerrain.colors[i] = (byte) (((i % 20) + 1) << 2);
+            }
+            check(!HeldMapTextures.isMapArt(noisyId, noisyTerrain), "noisy 20-color terrain is not art");
+
+            // 7c. A simple flat tile of a larger artwork: only 6 natural colors
+            HeldMapTextures.clear();
+            MapId flatId = new MapId(1008);
+            MapItemSavedData flatArt = MapItemSavedData.createFresh(0, 0, (byte) 0, false, false, Level.OVERWORLD).locked();
+            flatArt.colors = new byte[16384];
+            for (int i = 0; i < flatArt.colors.length; i++) {
+                flatArt.colors[i] = (byte) (((i / 4096) % 6 + 1) << 2);
+            }
+            check(HeldMapTextures.isMapArt(flatId, flatArt), "flat 6-color tile detected as art");
 
             // 8. Normal terrain with small artificial element (< 100 pixels, e.g. 30 black pixels)
             HeldMapTextures.clear();

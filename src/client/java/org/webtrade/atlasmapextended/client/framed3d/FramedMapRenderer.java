@@ -13,6 +13,7 @@ import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;
 import org.webtrade.atlasmapextended.client.data.ModConfig;
 import org.webtrade.atlasmapextended.client.gui.Paper;
+import org.webtrade.atlasmapextended.client.map.HeldMapTextures;
 
 import java.util.HashSet;
 import java.util.Set;
@@ -57,6 +58,9 @@ public final class FramedMapRenderer {
         if (data == null || data.colors == null) {
             logOnce("nodata:" + state.mapId.id(), "render map={} skipped: data={} colors={}",
                     state.mapId.id(), data != null, data != null && data.colors != null);
+            return;
+        }
+        if (HeldMapTextures.isMapArt(state.mapId, data)) {
             return;
         }
 
