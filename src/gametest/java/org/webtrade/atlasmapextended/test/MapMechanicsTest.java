@@ -494,9 +494,9 @@ public class MapMechanicsTest implements FabricClientGameTest {
             MapItemSavedData noisyTerrain = MapItemSavedData.createFresh(0, 0, (byte) 0, false, false, Level.OVERWORLD).locked();
             noisyTerrain.colors = new byte[16384];
             for (int i = 0; i < noisyTerrain.colors.length; i++) {
-                noisyTerrain.colors[i] = (byte) (((i % 20) + 1) << 2);
+                noisyTerrain.colors[i] = (byte) (((i % 15) + 1) << 2);
             }
-            check(!HeldMapTextures.isMapArt(noisyId, noisyTerrain), "noisy 20-color terrain is not art");
+            check(!HeldMapTextures.isMapArt(noisyId, noisyTerrain), "noisy 15-color terrain is not art");
 
             // 7c. A simple flat tile of a larger artwork: only 6 natural colors
             HeldMapTextures.clear();
@@ -504,7 +504,7 @@ public class MapMechanicsTest implements FabricClientGameTest {
             MapItemSavedData flatArt = MapItemSavedData.createFresh(0, 0, (byte) 0, false, false, Level.OVERWORLD).locked();
             flatArt.colors = new byte[16384];
             for (int i = 0; i < flatArt.colors.length; i++) {
-                flatArt.colors[i] = (byte) (((i / 4096) % 6 + 1) << 2);
+                flatArt.colors[i] = (byte) (((i / 2048) % 6 + 1) << 2);
             }
             check(HeldMapTextures.isMapArt(flatId, flatArt), "flat 6-color tile detected as art");
 
