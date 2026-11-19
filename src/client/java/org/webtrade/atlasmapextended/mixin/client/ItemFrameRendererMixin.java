@@ -123,6 +123,17 @@ public class ItemFrameRendererMixin {
         boolean suppress3D = FramedMapConnections.currentSuppress3D();
         boolean show2D = !ModConfig.get().framedMaps3D || suppress3D;
 
+        // A lone floor map keeps the orientation chosen when it was placed,
+        // so walking around it does not spin the picture. The pose stays
+        // rotated for the relief pass as well, so 2D and 3D match.
+        int steps = FramedMapConnections.currentTileRotation();
+        boolean rotate2D = steps != 0 && FramedMapConnections.currentUpright();
+        if (rotate2D) {
+            pose.translate(64.0f, 64.0f, 0.0f);
+            pose.mulPose(new Matrix4f().rotationZ((float) Math.toRadians(-steps * 90.0f)));
+            pose.translate(-64.0f, -64.0f, 0.0f);
+        }
+
         ResourceLocation customTexture = null;
         if (data != null && mapId != null) {
             customTexture = HeldMapTextures.getFramed(
