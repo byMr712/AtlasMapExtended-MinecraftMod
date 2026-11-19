@@ -5,7 +5,7 @@ import org.webtrade.atlasmapextended.client.data.Storage;
 /** Shared debug switch for the framed-map diagnostics. */
 public final class FramedMapDebug {
     /** The diagnostic build keeps this on; turn it off to silence the per-frame log. */
-    public static final boolean ENABLED = false;
+    public static final boolean ENABLED = true;
     /** Very noisy per-tile logs (masks, mesh builds, render calls). */
     public static final boolean DETAILED = false;
 

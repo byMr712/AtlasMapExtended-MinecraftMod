@@ -42,7 +42,7 @@ public final class HeldMapTextures {
     private static final Map<String, NativeImage> FULL = new HashMap<>();
     /** The same full image pre-rotated once per orientation. */
     private static final Map<String, NativeImage> FULL_ROTATED = new HashMap<>();
-    private static final Map<Integer, Boolean> MAP_ART_CACHE = new HashMap<>();
+    private static final Map<Integer, ArtState> MAP_ART_CACHE = new HashMap<>();
 
     private HeldMapTextures() {
     }
@@ -442,49 +442,78 @@ public final class HeldMapTextures {
         if (data == null || data.colors == null || !data.locked) {
             return false;
         }
+        int hash = Arrays.hashCode(data.colors);
         if (mapId != null) {
-            Boolean cached = MAP_ART_CACHE.get(mapId.id());
-            if (cached != null) {
-                return cached;
+            ArtState cached = MAP_ART_CACHE.get(mapId.id());
+            if (cached != null && cached.hash() == hash) {
+                return cached.art();
             }
         }
         boolean art = computeIsMapArt(data.colors);
         if (mapId != null) {
-            MAP_ART_CACHE.put(mapId.id(), art);
+            MAP_ART_CACHE.put(mapId.id(), new ArtState(hash, art));
         }
         return art;
     }
 
+    /** Art verdict with the colour hash it was computed from, so edits invalidate it. */
+    private record ArtState(int hash, boolean art) {
+    }
+
+    /**
+     * Map art is locked and either uses unnatural palette colours or is made of
+     * large flat areas. Terrain maps are noisy - neighbouring pixels usually
+     * differ - so flatness separates them even when the palette is natural.
+     * A single flat tile of a larger artwork must still be recognised, which is
+     * why flatness is checked on its own and not only with high colour count.
+     */
     private static boolean computeIsMapArt(byte[] colors) {
-        if (colors == null || colors.length == 0) {
+        if (colors == null || colors.length < 16384) {
             return false;
         }
         int artPixels = 0;
-        long uniqueMaskLow = 0L;
-        int uniqueCount = 0;
-        for (int i = 0; i < colors.length; i++) {
+        long seen = 0L;
+        int unique = 0;
+        for (int i = 0; i < 16384; i++) {
             int cid = (colors[i] & 0xFF) >> 2;
             if (cid == 0) {
                 continue;
             }
-            if (cid < 64) {
-                long bit = 1L << cid;
-                if ((uniqueMaskLow & bit) == 0L) {
-                    uniqueMaskLow |= bit;
-                    uniqueCount++;
-                    if (uniqueCount >= 14) {
-                        return true;
+            if ((seen & (1L << cid)) == 0L) {
+                seen |= 1L << cid;
+                unique++;
+            }
+            if (isArtPalette(cid) && ++artPixels >= 100) {
+                return true;
+            }
+        }
+        int equal = 0;
+        int pairs = 0;
+        for (int y = 0; y < 128; y++) {
+            int row = y * 128;
+            for (int x = 0; x < 128; x++) {
+                int i = row + x;
+                if (x + 1 < 128) {
+                    pairs++;
+                    if (colors[i] == colors[i + 1]) {
+                        equal++;
+                    }
+                }
+                if (y + 1 < 128) {
+                    pairs++;
+                    if (colors[i] == colors[i + 128]) {
+                        equal++;
                     }
                 }
             }
-            if (cid == 29 || cid == 51 || cid == 16 || cid == 23 || cid == 24
-                    || cid == 25 || cid == 19 || cid == 31 || cid == 32) {
-                artPixels++;
-                if (artPixels >= 100) {
-                    return true;
-                }
-            }
         }
-        return false;
+        double flatness = pairs == 0 ? 0.0 : equal / (double) pairs;
+        return (unique >= 14 && flatness >= 0.55)
+                || (unique >= 6 && flatness >= 0.70);
+    }
+
+    private static boolean isArtPalette(int cid) {
+        return cid == 29 || cid == 51 || cid == 16 || cid == 23 || cid == 24
+                || cid == 25 || cid == 19 || cid == 31 || cid == 32;
     }
 }
