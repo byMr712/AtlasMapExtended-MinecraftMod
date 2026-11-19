@@ -26,6 +26,8 @@ public class SettingsScreen extends Screen {
     private final List<Hit> hits = new ArrayList<>();
     private final List<Hit> popupHits = new ArrayList<>();
     private boolean themePopup;
+    private Runnable confirmAction;
+    private Component confirmMessage;
     private int pendingDeathMarkers;
     private Component tooltip;
     private double scroll;
@@ -128,6 +130,60 @@ public class SettingsScreen extends Screen {
         if (themePopup) {
             drawThemePopup(g, mx, my);
         }
+        if (confirmAction != null) {
+            drawConfirmPopup(g, mx, my);
+        }
+    }
+
+    /**
+     * Turning an experimental map feature on is confirmed first: relief and
+     * restyling can break map art and other map-related visuals.
+     */
+    private void toggleExperimental(boolean enabled, String warningKey, Runnable apply) {
+        if (enabled) {
+            apply.run();
+            cfg.save();
+            return;
+        }
+        confirmAction = apply;
+        confirmMessage = T.tr(warningKey);
+    }
+
+    private void closeConfirm() {
+        confirmAction = null;
+        confirmMessage = null;
+    }
+
+    private void drawConfirmPopup(GuiGraphics g, int mx, int my) {
+        g.fill(0, 0, width, height, Paper.DIM);
+        int pw = Math.min(width - 16, 340);
+        List<FormattedCharSequence> lines = font.split(confirmMessage, pw - 20);
+        int ph = 12 + lines.size() * 10 + 10 + 16 + 10;
+        int px = (width - pw) / 2;
+        int py = (height - ph) / 2;
+        Paper.panel(g, px, py, pw, ph);
+        int y = py + 12;
+        for (FormattedCharSequence line : lines) {
+            g.drawString(font, line, px + 10, y, Paper.INK, false);
+            y += 10;
+        }
+        int bw = 96;
+        int by = py + ph - 26;
+        int bxNo = px + pw - 10 - bw;
+        int bxYes = bxNo - 6 - bw;
+        boolean yesHover = Paper.inside(mx, my, bxYes, by, bw, 16);
+        boolean noHover = Paper.inside(mx, my, bxNo, by, bw, 16);
+        Paper.button(g, font, T.tr("button.yes_enable"), bxYes, by, bw, 16, yesHover, true);
+        Paper.button(g, font, T.tr("button.no_cancel"), bxNo, by, bw, 16, noHover, true);
+        popupHit(bxYes, by, bw, 16, () -> {
+            Runnable action = confirmAction;
+            closeConfirm();
+            if (action != null) {
+                action.run();
+                cfg.save();
+            }
+        });
+        popupHit(bxNo, by, bw, 16, this::closeConfirm);
     }
 
     private void drawDesign(GuiGraphics g, int mx, int my, int x, int y, int w, int top, int bottom) {
@@ -150,14 +206,16 @@ public class SettingsScreen extends Screen {
         int styleY = y;
         y = option(g, mx, my, x, y, w, top, bottom,
                 T.tr("settings.custom_map_style", onOff(cfg.customMapStyle)),
-                () -> cfg.customMapStyle = !cfg.customMapStyle);
+                () -> toggleExperimental(cfg.customMapStyle, "settings.custom_map_style_warning",
+                        () -> cfg.customMapStyle = !cfg.customMapStyle));
         if (Paper.inside(mx, my, x, styleY, w, 16) && my >= top && my < bottom) {
             tooltip = T.tr("settings.custom_map_style_tip");
         }
         int framedY = y;
         y = option(g, mx, my, x, y, w, top, bottom,
                 T.tr("settings.framed_maps_3d", onOff(cfg.framedMaps3D)),
-                () -> cfg.framedMaps3D = !cfg.framedMaps3D);
+                () -> toggleExperimental(cfg.framedMaps3D, "settings.framed_maps_3d_warning",
+                        () -> cfg.framedMaps3D = !cfg.framedMaps3D));
         if (Paper.inside(mx, my, x, framedY, w, 16) && my >= top && my < bottom) {
             tooltip = T.tr("settings.framed_maps_3d_tip");
         }
@@ -354,6 +412,17 @@ public class SettingsScreen extends Screen {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (confirmAction != null) {
+            for (int i = popupHits.size() - 1; i >= 0; i--) {
+                Hit h = popupHits.get(i);
+                if (Paper.inside(mouseX, mouseY, h.x, h.y, h.w, h.h)) {
+                    h.action.run();
+                    Paper.click();
+                    return true;
+                }
+            }
+            return true;
+        }
         if (themePopup) {
             for (int i = popupHits.size() - 1; i >= 0; i--) {
                 Hit h = popupHits.get(i);
@@ -378,7 +447,7 @@ public class SettingsScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mx, double my, double sx, double sy) {
-        if (themePopup) {
+        if (themePopup || confirmAction != null) {
             return true;
         }
         scroll -= sy * ROW;
@@ -388,7 +457,9 @@ public class SettingsScreen extends Screen {
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         if (keyCode == InputConstants.KEY_ESCAPE) {
-            if (themePopup) {
+            if (confirmAction != null) {
+                closeConfirm();
+            } else if (themePopup) {
                 themePopup = false;
             } else {
                 onClose();
