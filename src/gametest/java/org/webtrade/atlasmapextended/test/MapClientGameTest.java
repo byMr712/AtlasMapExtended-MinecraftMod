@@ -255,7 +255,9 @@ public class MapClientGameTest implements FabricClientGameTest {
                 if (!ModConfig.get().theme.equals("modern_dark")) {
                     throw new AssertionError("theme tile click did not apply, theme=" + ModConfig.get().theme);
                 }
-                ModConfig.get().teleport = true;
+                if (!ModConfig.get().teleport) {
+                    throw new AssertionError("teleport must be enabled by default");
+                }
             });
 
             // Experimental map features must ask before they are enabled.
