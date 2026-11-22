@@ -360,11 +360,6 @@ public class SettingsScreen extends Screen {
         y += 4;
         section(g, T.s("settings.markers_section"), x, y, w);
         y += 12;
-        int ty = y;
-        y = option(g, mx, my, x, y, w, top, bottom, T.tr("settings.teleport", onOff(cfg.teleport)), () -> cfg.teleport = !cfg.teleport);
-        if (Paper.inside(mx, my, x, ty, w, 16)) {
-            tooltip = T.tr("settings.teleport_tip");
-        }
         y = option(g, mx, my, x, y, w, top, bottom, T.tr("settings.labels", onOff(cfg.markerLabels)), () -> cfg.markerLabels = !cfg.markerLabels);
         y = option(g, mx, my, x, y, w, top, bottom, T.tr("settings.world_markers", onOff(cfg.worldMarkers)), () -> cfg.worldMarkers = !cfg.worldMarkers);
         for (FormattedCharSequence l : font.split(T.tr("settings.teleport_note"), w)) {
