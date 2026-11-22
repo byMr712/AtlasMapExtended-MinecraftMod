@@ -39,8 +39,8 @@ public class ModConfig {
     public int serverMapSort = 0;
     public int realmMapSort = 0;
     public String theme = "papyrus";
-    /** Shows a "Teleport" button on markers (needs command permission). */
-    public boolean teleport = false;
+    /** Shows a "Teleport" button on markers (needs command permission). Always on. */
+    public boolean teleport = true;
     public boolean markerLabels = true;
     public java.util.Map<String, String> serverMapOverrides = new java.util.HashMap<>();
 
@@ -54,6 +54,12 @@ public class ModConfig {
             boolean existed = java.nio.file.Files.isRegularFile(file());
             instance = Storage.readJson(file(), ModConfig.class, fallback);
             firstRunSizeDelay = existed ? -1 : 60;
+            if (!instance.teleport) {
+                // Teleport is always available now; migrate old configs that
+                // switched it off so nobody loses the button after updating.
+                instance.teleport = true;
+                instance.save();
+            }
             if (instance.minimapSizesVersion == 0) {
                 // Old config: the first four slots used to be 80/110/140/170.
                 instance.minimapSizeIndex = Math.min(MINIMAP_SIZES.length - 1, instance.minimapSizeIndex + 3);
@@ -100,6 +106,8 @@ public class ModConfig {
         deathMarkers = Math.max(0, Math.min(4, deathMarkers));
         deathMarkersCreated = Math.max(0, deathMarkersCreated);
         minimapCorner = Math.floorMod(minimapCorner, 4);
+        // The marker teleport button is a core feature and is always enabled.
+        teleport = true;
         localMapSort = Math.floorMod(localMapSort, 3);
         serverMapSort = Math.floorMod(serverMapSort, 3);
         realmMapSort = Math.floorMod(realmMapSort, 3);
