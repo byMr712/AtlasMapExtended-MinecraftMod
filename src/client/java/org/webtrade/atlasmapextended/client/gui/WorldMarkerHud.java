@@ -32,6 +32,8 @@ public final class WorldMarkerHud {
 
     // Reused every frame so rendering does not allocate per marker.
     private static final Map<String, IconEntry> ICONS = new HashMap<>();
+    private static final float[] ARROW_ORIGIN = new float[2];
+    private static final float[] ARROW_ALONG = new float[2];
 
     private static boolean screenshotPending;
     private static boolean visibleLastFrame;
@@ -150,6 +152,18 @@ public final class WorldMarkerHud {
                 scale = 0.65 + 0.35 * (dist - 10.0) / 30.0;
             }
             int iconSize = (int) Math.round(ICON_SIZE * scale);
+            int arrow = arrowAngle(m.icon);
+            if (arrow >= 0) {
+                IconEntry arrowIcon = iconEntry("arrow_n", m.color != 0, now);
+                arrowIcon.uses++;
+                arrowIcon.lastUsed = now;
+                int arrowTint = m.color == 0 ? alpha << 24 | 0xFFFFFF : Paper.a(m.color, alpha);
+                if (drawWorldArrow(g, m, eye, arrow, arrowIcon.texture, arrowTint,
+                        iconSize, screenUpAngle(camera), sw, sh, camera)) {
+                    drawn++;
+                    continue;
+                }
+            }
             String iconName = adaptedArrow(m.icon, screenUpAngle(camera));
             IconEntry icon = iconEntry(iconName, m.color != 0, now);
             icon.uses++;
@@ -260,6 +274,55 @@ public final class WorldMarkerHud {
             case "arrow_nw" -> 315;
             default -> -1;
         };
+    }
+
+    private static boolean drawWorldArrow(GuiGraphics g, Marker m, Vec3 eye,
+                                          int arrowDeg, Identifier texture, int tint,
+                                          int iconSize, double screenUp, int sw, int sh,
+                                          Camera camera) {
+        double rad = Math.toRadians(arrowDeg);
+        double dirX = Math.sin(rad);
+        double dirZ = -Math.cos(rad);
+        double ax = m.x + 0.5;
+        double ay = m.y + 1.0;
+        double az = m.z + 0.5;
+        float[] origin = ARROW_ORIGIN;
+        if (!projectPoint(ax, ay, az, origin, sw, sh)) {
+            return false;
+        }
+        float[] ahead = ARROW_ALONG;
+        if (!projectPoint(ax + dirX, ay, az + dirZ, ahead, sw, sh)) {
+            return false;
+        }
+        float dx = ahead[0] - origin[0];
+        float dy = ahead[1] - origin[1];
+        double angle = Math.hypot(dx, dy) < 1.5
+                ? Math.toRadians(arrowDeg - screenUp)
+                : Math.atan2(dx, -dy);
+        if (!Double.isFinite(angle)) {
+            return false;
+        }
+        Vector3f forward = new Quaternionf(camera.rotation()).transform(new Vector3f(0.0f, 0.0f, -1.0f));
+        double facing = Math.abs(dirX * forward.x + dirZ * forward.z);
+        float lengthScale = (float) (0.35 + 0.65 * Math.sqrt(Math.max(0.0, 1.0 - facing * facing)));
+        g.pose().pushMatrix();
+        g.pose().translate(origin[0], origin[1]);
+        g.pose().rotate((float) angle);
+        g.pose().scale(1.0f, lengthScale);
+        Paper.icon(g, texture, -iconSize / 2, -iconSize / 2, iconSize, tint);
+        g.pose().popMatrix();
+        return true;
+    }
+
+    private static boolean projectPoint(double x, double y, double z,
+                                        float[] out, int sw, int sh) {
+        Vec3 point = Minecraft.getInstance().gameRenderer.projectPointToScreen(new Vec3(x, y, z));
+        if (point.z < -1 || point.z > 1) {
+            return false;
+        }
+        out[0] = (float) ((point.x + 1.0) * 0.5 * sw);
+        out[1] = (float) ((1.0 - point.y) * 0.5 * sh);
+        return true;
     }
 
     /**
