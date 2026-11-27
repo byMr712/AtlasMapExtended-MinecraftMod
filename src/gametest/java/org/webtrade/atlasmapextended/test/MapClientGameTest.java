@@ -47,6 +47,37 @@ public class MapClientGameTest implements FabricClientGameTest {
             ctx.waitTicks(400);
             ctx.takeScreenshot("02_ingame_minimap");
 
+            // A red arrow must follow its world bearing at any screen position,
+            // not turn with the camera like a compass needle.
+            ctx.runOnClient(mc -> {
+                MapSession s = MapManager.live();
+                Marker m = new Marker();
+                m.icon = "arrow_e";
+                m.name = "Arrow test";
+                m.x = mc.player.getBlockX();
+                m.y = mc.player.getBlockY();
+                m.z = mc.player.getBlockZ() - 8;
+                m.dim = mc.level.dimension().identifier().toString();
+                s.markers.add(m);
+                mc.player.setYRot(180.0f); // north: marker in the centre
+                mc.player.setXRot(15.0f);
+            });
+            ctx.waitTicks(10);
+            ctx.takeScreenshot("02a_arrow_center");
+            ctx.runOnClient(mc -> {
+                mc.player.setYRot(225.0f); // north-west: marker near the right edge
+                mc.player.setXRot(15.0f);
+            });
+            ctx.waitTicks(10);
+            ctx.takeScreenshot("02b_arrow_edge");
+            ctx.runOnClient(mc -> {
+                mc.player.setYRot(180.0f);
+                mc.player.setXRot(0.0f);
+                MapSession s = MapManager.live();
+                s.markers.removeIf(marker -> "Arrow test".equals(marker.name));
+            });
+            ctx.waitTicks(5);
+
             ctx.runOnClient(mc -> {
                 MapSession s = MapManager.live();
                 if (s == null) {
