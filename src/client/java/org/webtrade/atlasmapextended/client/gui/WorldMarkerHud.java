@@ -85,8 +85,6 @@ public final class WorldMarkerHud {
             visibleLastFrame = false;
             return;
         }
-        double camMapAngle = (p.getYRot() + 180.0) % 360.0;
-        if (camMapAngle < 0) camMapAngle += 360.0;
         String dim = mc.level.dimension().location().toString();
         Vec3 eye = p.getEyePosition();
         Camera camera = mc.gameRenderer.getMainCamera();
@@ -159,7 +157,7 @@ public final class WorldMarkerHud {
                 scale = 0.65 + 0.35 * (dist - 10.0) / 30.0;
             }
             int iconSize = (int) Math.round(ICON_SIZE * scale);
-            String iconName = adaptedArrow(m.icon, camMapAngle);
+            String iconName = adaptedArrow(m.icon, screenUpAngle(camera));
             IconEntry icon = iconEntry(iconName, m.color != 0, now);
             icon.uses++;
             icon.lastUsed = now;
@@ -271,12 +269,31 @@ public final class WorldMarkerHud {
         };
     }
 
-    private static String adaptedArrow(String icon, double camMapAngle) {
+    /**
+     * Map angle (0 = north, 90 = east) that points up on screen for the given
+     * camera. Derived from the camera's screen-right axis projected onto the
+     * ground, which includes yaw, third-person/free-camera offsets and roll.
+     */
+    private static double screenUpAngle(Camera camera) {
+        Quaternionf q = new Quaternionf(camera.rotation());
+        Vector3f right = q.transform(new Vector3f(1.0f, 0.0f, 0.0f));
+        double len = Math.hypot(right.x, right.z);
+        if (len > 1.0e-4) {
+            double rightAngle = Math.toDegrees(Math.atan2(right.x / len, -right.z / len));
+            return rightAngle - 90.0;
+        }
+        // Straight up/down with an exact 90 degree roll: fall back to the
+        // forward direction, where the horizontal axis still has a meaning.
+        Vector3f forward = q.transform(new Vector3f(0.0f, 0.0f, -1.0f));
+        return Math.toDegrees(Math.atan2(forward.x, -forward.z));
+    }
+
+    private static String adaptedArrow(String icon, double screenUp) {
         int arrowAngle = arrowAngle(icon);
         if (arrowAngle < 0) {
             return icon;
         }
-        double relAngle = (arrowAngle - camMapAngle) % 360.0;
+        double relAngle = (arrowAngle - screenUp) % 360.0;
         if (relAngle < 0) {
             relAngle += 360.0;
         }
