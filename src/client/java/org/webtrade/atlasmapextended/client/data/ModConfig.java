@@ -26,7 +26,9 @@ public class ModConfig {
     public boolean minimapMarkers = true;
     public boolean drawingsVisible = true;
     public boolean markersVisible = true;
-    public boolean worldMarkers = false;
+    public boolean worldMarkers = true;
+    /** One-time migration so configs from older versions also show world markers. */
+    public boolean worldMarkersMigrated = false;
     public int markerSort = 0;
     public int regionSort = 0;
     public int localMapSort = 0;
@@ -55,6 +57,13 @@ public class ModConfig {
                 // Teleport is always available now; migrate old configs that
                 // switched it off so nobody loses the button after updating.
                 instance.teleport = true;
+                instance.save();
+            }
+            if (!instance.worldMarkersMigrated) {
+                // World markers are on by default now. Do this once, so turning
+                // the option off later stays respected.
+                instance.worldMarkers = true;
+                instance.worldMarkersMigrated = true;
                 instance.save();
             }
             if (instance.minimapSizesVersion == 0) {
