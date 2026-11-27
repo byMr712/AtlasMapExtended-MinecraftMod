@@ -35,6 +35,9 @@ public final class WorldMarkerHud {
     private static final Map<String, IconEntry> ICONS = new HashMap<>();
     private static final Matrix4f PROJECTION = new Matrix4f();
     private static final Vector3f POINT = new Vector3f();
+    private static final Vector3f ARROW_POINT = new Vector3f();
+    private static final float[] ARROW_ORIGIN = new float[2];
+    private static final float[] ARROW_ALONG = new float[2];
 
     private static boolean screenshotPending;
     private static boolean visibleLastFrame;
@@ -157,6 +160,18 @@ public final class WorldMarkerHud {
                 scale = 0.65 + 0.35 * (dist - 10.0) / 30.0;
             }
             int iconSize = (int) Math.round(ICON_SIZE * scale);
+            int arrow = arrowAngle(m.icon);
+            if (arrow >= 0) {
+                IconEntry arrowIcon = iconEntry("arrow_n", m.color != 0, now);
+                arrowIcon.uses++;
+                arrowIcon.lastUsed = now;
+                int arrowTint = m.color == 0 ? alpha << 24 | 0xFFFFFF : Paper.a(m.color, alpha);
+                if (drawWorldArrow(g, m, eye, arrow, arrowIcon.texture, arrowTint,
+                        iconSize, screenUpAngle(camera), sw, sh, camera)) {
+                    drawn++;
+                    continue;
+                }
+            }
             String iconName = adaptedArrow(m.icon, screenUpAngle(camera));
             IconEntry icon = iconEntry(iconName, m.color != 0, now);
             icon.uses++;
@@ -267,6 +282,56 @@ public final class WorldMarkerHud {
             case "arrow_nw" -> 315;
             default -> -1;
         };
+    }
+
+    private static boolean drawWorldArrow(GuiGraphics g, Marker m, Vec3 eye,
+                                          int arrowDeg, ResourceLocation texture, int tint,
+                                          int iconSize, double screenUp, int sw, int sh,
+                                          Camera camera) {
+        double rad = Math.toRadians(arrowDeg);
+        double dirX = Math.sin(rad);
+        double dirZ = -Math.cos(rad);
+        double ax = m.x + 0.5;
+        double ay = m.y + 1.0;
+        double az = m.z + 0.5;
+        float[] origin = ARROW_ORIGIN;
+        if (!projectPoint(eye, ax, ay, az, origin, sw, sh)) {
+            return false;
+        }
+        float[] ahead = ARROW_ALONG;
+        if (!projectPoint(eye, ax + dirX, ay, az + dirZ, ahead, sw, sh)) {
+            return false;
+        }
+        float dx = ahead[0] - origin[0];
+        float dy = ahead[1] - origin[1];
+        double angle = Math.hypot(dx, dy) < 1.5
+                ? Math.toRadians(arrowDeg - screenUp)
+                : Math.atan2(dx, -dy);
+        if (!Double.isFinite(angle)) {
+            return false;
+        }
+        Vector3f forward = new Quaternionf(camera.rotation()).transform(new Vector3f(0.0f, 0.0f, -1.0f));
+        double facing = Math.abs(dirX * forward.x + dirZ * forward.z);
+        float lengthScale = (float) (0.35 + 0.65 * Math.sqrt(Math.max(0.0, 1.0 - facing * facing)));
+        g.pose().pushPose();
+        g.pose().translate(origin[0], origin[1], 0.0f);
+        g.pose().mulPose(new Matrix4f().rotationZ((float) angle));
+        g.pose().scale(1.0f, lengthScale, 1.0f);
+        Paper.icon(g, texture, -iconSize / 2, -iconSize / 2, iconSize, tint);
+        g.pose().popPose();
+        return true;
+    }
+
+    private static boolean projectPoint(Vec3 eye, double x, double y, double z,
+                                        float[] out, int sw, int sh) {
+        ARROW_POINT.set((float) (x - eye.x), (float) (y - eye.y), (float) (z - eye.z));
+        PROJECTION.transformProject(ARROW_POINT);
+        if (ARROW_POINT.z < -1 || ARROW_POINT.z > 1) {
+            return false;
+        }
+        out[0] = (ARROW_POINT.x + 1) * 0.5f * sw;
+        out[1] = (1 - ARROW_POINT.y) * 0.5f * sh;
+        return true;
     }
 
     /**
