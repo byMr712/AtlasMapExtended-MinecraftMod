@@ -258,6 +258,9 @@ public class MapClientGameTest implements FabricClientGameTest {
                 if (!ModConfig.get().teleport) {
                     throw new AssertionError("teleport must be enabled by default");
                 }
+                if (!ModConfig.get().worldMarkers) {
+                    throw new AssertionError("world markers must be enabled by default");
+                }
             });
 
             // Experimental map features must ask before they are enabled.
