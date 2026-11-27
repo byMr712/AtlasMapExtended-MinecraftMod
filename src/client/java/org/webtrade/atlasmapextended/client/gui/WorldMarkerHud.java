@@ -99,6 +99,10 @@ public final class WorldMarkerHud {
         PROJECTION.set(mc.gameRenderer.getProjectionMatrix(fov));
         PROJECTION.mul(new Matrix4f().rotation(new Quaternionf(camera.rotation()).conjugate()));
 
+        // Gui.render is entered before vanilla enables blending, so the world
+        // marker alpha would be ignored (cutout only) without this.
+        com.mojang.blaze3d.systems.RenderSystem.enableBlend();
+        com.mojang.blaze3d.systems.RenderSystem.defaultBlendFunc();
         int sw = g.guiWidth();
         int sh = g.guiHeight();
         int crossX = sw / 2;
@@ -196,6 +200,7 @@ public final class WorldMarkerHud {
         }
         visibleLastFrame = drawn > 0;
         releaseUnused(now);
+        com.mojang.blaze3d.systems.RenderSystem.disableBlend();
     }
 
     private static IconEntry iconEntry(String icon, boolean tinted, long now) {
