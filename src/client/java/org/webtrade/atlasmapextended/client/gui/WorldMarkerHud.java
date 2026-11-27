@@ -9,6 +9,7 @@ import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;
+import org.joml.Quaternionf;
 import org.joml.Vector3f;
 import org.joml.Vector3fc;
 import org.webtrade.atlasmapextended.client.data.Marker;
@@ -75,13 +76,15 @@ public final class WorldMarkerHud {
             visibleLastFrame = false;
             return;
         }
-        double camMapAngle = (p.getYRot() + 180.0) % 360.0;
-        if (camMapAngle < 0) camMapAngle += 360.0;
         Camera camera = mc.gameRenderer.mainCamera();
         if (camera == null || !camera.isInitialized()) {
             visibleLastFrame = false;
             return;
         }
+        // Compass "up" as seen on screen: uses the real camera orientation, so
+        // third-person views, spectators and camera roll rotate the arrows
+        // together with the world instead of following the player's body.
+        double screenUp = screenUpAngle(camera);
         String dim = mc.level.dimension().identifier().toString();
         Vec3 eye = camera.position();
         Vector3fc forward = camera.forwardVector();
@@ -185,7 +188,7 @@ public final class WorldMarkerHud {
                 scale = 0.65 + 0.35 * (distance - 10.0) / 30.0;
             }
             int iconSize = (int) Math.round(ICON_SIZE * scale);
-            String iconName = adaptedArrow(m.icon, camMapAngle);
+            String iconName = adaptedArrow(m.icon, screenUp);
             IconEntry icon = iconEntry(iconName, m.color != 0, now);
             icon.uses++;
             icon.lastUsed = now;
@@ -286,12 +289,31 @@ public final class WorldMarkerHud {
         };
     }
 
-    private static String adaptedArrow(String icon, double camMapAngle) {
+    /**
+     * Map angle (0 = north, 90 = east) that points up on screen for the given
+     * camera. Derived from the camera's screen-right axis projected onto the
+     * ground, which includes yaw, third-person/free-camera offsets and roll.
+     */
+    private static double screenUpAngle(Camera camera) {
+        Quaternionf q = new Quaternionf(camera.rotation());
+        Vector3f right = q.transform(new Vector3f(1.0f, 0.0f, 0.0f));
+        double len = Math.hypot(right.x, right.z);
+        if (len > 1.0e-4) {
+            double rightAngle = Math.toDegrees(Math.atan2(right.x / len, -right.z / len));
+            return rightAngle - 90.0;
+        }
+        // Straight up/down with an exact 90 degree roll: fall back to the
+        // forward direction, where the horizontal axis still has a meaning.
+        Vector3f forward = q.transform(new Vector3f(0.0f, 0.0f, -1.0f));
+        return Math.toDegrees(Math.atan2(forward.x, -forward.z));
+    }
+
+    private static String adaptedArrow(String icon, double screenUp) {
         int arrowAngle = arrowAngle(icon);
         if (arrowAngle < 0) {
             return icon;
         }
-        double relAngle = (arrowAngle - camMapAngle) % 360.0;
+        double relAngle = (arrowAngle - screenUp) % 360.0;
         if (relAngle < 0) {
             relAngle += 360.0;
         }
