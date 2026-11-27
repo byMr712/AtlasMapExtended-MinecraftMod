@@ -293,7 +293,13 @@ public final class WorldMarkerHud {
             return false;
         }
         float[] ahead = ARROW_ALONG;
-        if (!projectPoint(ax + dirX, ay, az + dirZ, ahead, sw, sh)) {
+        // Project a point further along the arrow, scaled with distance: a
+        // one-block step at long range lands within a pixel or two and the
+        // angle becomes noisy, which reads as shaking.
+        double arrowStep = Math.min(8.0, Math.max(1.0, Math.sqrt(
+                (ax - eye.x) * (ax - eye.x) + (ay - eye.y) * (ay - eye.y)
+                        + (az - eye.z) * (az - eye.z)) * 0.05));
+        if (!projectPoint(ax + dirX * arrowStep, ay, az + dirZ * arrowStep, ahead, sw, sh)) {
             return false;
         }
         float dx = ahead[0] - origin[0];
